@@ -106,11 +106,13 @@ jobs:
           # 실행 파일이 정상적으로 생성되었는지 확인
           ls -la dist/
 
-          # macOS에서 app 번들이 생성된 경우 실행 파일 추출
+          # macOS에서 app 번들 확인
           if [ -d "dist/FM-Radio-Enhanced-macOS-arm64.app" ]; then
-            echo "📱 Found app bundle, extracting executable..."
-            cp -r "dist/FM-Radio-Enhanced-macOS-arm64.app/Contents/MacOS/FM-Radio-Enhanced-macOS-arm64" "dist/"
-            ls -la dist/FM-Radio-Enhanced-macOS-arm64
+            echo "📱 Found app bundle!"
+            ls -la "dist/FM-Radio-Enhanced-macOS-arm64.app"
+          else
+            echo "⚠️ App bundle not found, checking for executable..."
+            ls -la dist/
           fi
 
           echo "🎯 macOS build finished!"
@@ -147,20 +149,39 @@ jobs:
       - name: Prepare distribution files (macOS)
         if: runner.os == 'macOS'
         run: |
-          # 실행 파일을 dist-final로 복사
-          cp "dist/${{ matrix.executable-name }}" "dist-final/"
-
-          # README와 라이선스 파일 추가
-          cp README.md dist-final/ || echo "README.md not found, skipping"
-          cp LICENSE dist-final/ || echo "LICENSE not found, skipping"
-
-          # macOS용 실행 권한 설정
-          chmod +x "dist-final/${{ matrix.executable-name }}"
-
-          # 압축 파일 생성
-          cd dist-final
-          tar -czf "../${{ matrix.executable-name }}.tar.gz" *
-          cd ..
+          # .app 번들이 있는지 확인하고 전체 앱을 패키징
+          if [ -d "dist/FM-Radio-Enhanced-macOS-arm64.app" ]; then
+            echo "📱 Packaging .app bundle..."
+            # .app 번들 전체를 dist-final로 복사
+            cp -r "dist/FM-Radio-Enhanced-macOS-arm64.app" "dist-final/"
+            
+            # README와 라이선스 파일 추가
+            cp README.md dist-final/ || echo "README.md not found, skipping"
+            cp LICENSE dist-final/ || echo "LICENSE not found, skipping"
+            
+            # .app 번들을 포함한 압축 파일 생성
+            cd dist-final
+            tar -czf "../${{ matrix.executable-name }}.tar.gz" *
+            cd ..
+            
+            echo "✅ Created .app bundle package: ${{ matrix.executable-name }}.tar.gz"
+          else
+            echo "⚠️ .app bundle not found, packaging executable..."
+            # 실행 파일이 있으면 그것을 패키징
+            if [ -f "dist/${{ matrix.executable-name }}" ]; then
+              cp "dist/${{ matrix.executable-name }}" "dist-final/"
+              chmod +x "dist-final/${{ matrix.executable-name }}"
+            fi
+            
+            # README와 라이선스 파일 추가
+            cp README.md dist-final/ || echo "README.md not found, skipping"
+            cp LICENSE dist-final/ || echo "LICENSE not found, skipping"
+            
+            # 압축 파일 생성
+            cd dist-final
+            tar -czf "../${{ matrix.executable-name }}.tar.gz" *
+            cd ..
+          fi
 
       - name: Prepare distribution files (Windows)
         if: runner.os == 'Windows'
