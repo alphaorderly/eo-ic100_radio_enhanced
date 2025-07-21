@@ -2,22 +2,16 @@
 # -*- mode: python ; coding: utf-8 -*-
 
 import sys
-from pathlib import Path
-
-# 프로젝트 루트 디렉토리
-project_root = Path(__file__).parent
+import os
 
 # 플랫폼별 설정
 if sys.platform == 'darwin':  # macOS
-    icon_file = project_root / 'assets' / 'icon.icns'
     platform_name = 'macOS-arm64'
     target_arch = 'arm64'
 elif sys.platform == 'win32':  # Windows
-    icon_file = project_root / 'assets' / 'icon.ico'
     platform_name = 'Windows-x64'
     target_arch = None
 else:
-    icon_file = None
     platform_name = 'Linux-x64'
     target_arch = None
 
@@ -29,16 +23,15 @@ hidden_imports = [
     'PySide6.QtCore',
     'PySide6.QtWidgets',
     'PySide6.QtGui',
+    'besfm',
     'json',
     'os',
     'sys',
     'time'
 ]
 
-# 데이터 파일들
-datas = [
-    ('assets', 'assets'),  # assets 폴더 포함
-]
+# 데이터 파일들 (assets 제거)
+datas = []
 
 # 바이너리 파일들 (USB 라이브러리)
 binaries = []
@@ -57,7 +50,7 @@ excludes = [
 
 a = Analysis(
     ['ic100_radio_gui.py'],
-    pathex=[str(project_root)],
+    pathex=[],
     binaries=binaries,
     datas=datas,
     hiddenimports=hidden_imports,
@@ -90,15 +83,15 @@ exe = EXE(
     target_arch=target_arch,
     codesign_identity=None,
     entitlements_file=None,
-    icon=str(icon_file) if icon_file and icon_file.exists() else None,
+    icon=None,  # 아이콘 제거
 )
 
-# macOS용 앱 번들 생성
+# macOS용 앱 번들 생성 (아이콘 제거)
 if sys.platform == 'darwin':
     app = BUNDLE(
         exe,
         name=f'FM-Radio-Enhanced-{platform_name}.app',
-        icon=str(icon_file) if icon_file and icon_file.exists() else None,
+        icon=None,  # 아이콘 제거
         bundle_identifier='com.alphaorderly.fm-radio-enhanced',
         info_plist={
             'CFBundleName': 'FM Radio Enhanced',
