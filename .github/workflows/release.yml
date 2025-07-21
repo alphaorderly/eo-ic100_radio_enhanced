@@ -125,7 +125,7 @@ jobs:
           Compress-Archive -Path "dist-final\*" -DestinationPath "${{ matrix.executable-name }}.zip"
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.executable-name }}
           path: |
@@ -143,18 +143,14 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Download all artifacts
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           path: artifacts
 
-      - name: Create Release
-        id: create_release
-        uses: actions/create-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Create Release and Upload Assets
+        uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref_name }}
-          release_name: FM Radio Enhanced ${{ github.ref_name }}
+          name: FM Radio Enhanced ${{ github.ref_name }}
           body: |
             ## FM Radio Enhanced ${{ github.ref_name }}
 
@@ -194,25 +190,8 @@ jobs:
 
             ---
             **Note**: This application requires a compatible Samsung Galaxy device connected via USB.
+          files: |
+            artifacts/FM-Radio-Enhanced-macOS-arm64/FM-Radio-Enhanced-macOS-arm64.tar.gz
+            artifacts/FM-Radio-Enhanced-Windows-x64/FM-Radio-Enhanced-Windows-x64.zip
           draft: false
           prerelease: false
-
-      - name: Upload macOS Release Asset
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: artifacts/FM-Radio-Enhanced-macOS-arm64/FM-Radio-Enhanced-macOS-arm64.tar.gz
-          asset_name: FM-Radio-Enhanced-macOS-arm64.tar.gz
-          asset_content_type: application/gzip
-
-      - name: Upload Windows Release Asset
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: artifacts/FM-Radio-Enhanced-Windows-x64/FM-Radio-Enhanced-Windows-x64.zip
-          asset_name: FM-Radio-Enhanced-Windows-x64.zip
-          asset_content_type: application/zip
