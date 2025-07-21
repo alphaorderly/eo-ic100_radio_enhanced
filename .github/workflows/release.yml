@@ -36,58 +36,109 @@ jobs:
           python-version: ${{ matrix.python-version }}
           architecture: ${{ matrix.arch }}
 
+      - name: Cache Python dependencies
+        uses: actions/cache@v3
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Cache PyInstaller
+        uses: actions/cache@v3
+        with:
+          path: |
+            build/
+            __pycache__/
+          key: ${{ runner.os }}-pyinstaller-${{ hashFiles('**/*.py') }}
+          restore-keys: |
+            ${{ runner.os }}-pyinstaller-
+
       - name: Install system dependencies (macOS)
         if: runner.os == 'macOS'
         run: |
           # libusb 설치 (USB 통신을 위해 필요)
           brew install libusb
+          # 빌드 툴 설치
+          brew install create-dmg || true
 
       - name: Install system dependencies (Windows)
         if: runner.os == 'Windows'
         run: |
           # Windows용 libusb 설치 (vcpkg 사용)
-          choco install libusb
+          # choco install libusb 대신 pip으로 설치
+          echo "libusb will be handled by Python packages"
 
       - name: Install Python dependencies
         run: |
-          python -m pip install --upgrade pip
+          echo "📦 Installing Python dependencies..."
+          python -m pip install --upgrade pip setuptools wheel
+          echo "Installing requirements from requirements.txt..."
           pip install -r requirements.txt
+          echo "Installing PyInstaller..."
           pip install pyinstaller
+          echo "Cleaning up unnecessary packages to save memory..."
+          pip uninstall -y matplotlib numpy scipy pandas || echo "Some packages were not installed, skipping..."
+          echo "✅ Dependencies installed successfully!"
+          echo "Installed packages:"
+          pip list
 
       - name: Build executable with PyInstaller (macOS)
         if: runner.os == 'macOS'
+        timeout-minutes: 45
         run: |
-          pyinstaller --onefile \
-            --windowed \
-            --name "${{ matrix.executable-name }}" \
-            --icon=assets/icon.icns \
-            --add-data "assets:assets" \
-            --hidden-import=usb.backend.libusb1 \
-            --hidden-import=usb.backend.libusb0 \
-            --hidden-import=usb.backend.openusb \
-            --hidden-import=PySide6.QtCore \
-            --hidden-import=PySide6.QtWidgets \
-            --hidden-import=PySide6.QtGui \
-            --collect-all=usb \
-            --target-arch=arm64 \
-            ic100_radio_gui.py
+          echo "🔧 Building macOS executable..."
+          echo "Python version: $(python --version)"
+          echo "PyInstaller version: $(pyinstaller --version)"
+          echo "Working directory: $(pwd)"
+          echo "Files in current directory:"
+          ls -la
+
+          # 메모리 정보 확인
+          echo "Memory info:"
+          vm_stat | head -5
+
+          # spec 파일을 사용하여 빌드
+          echo "🚀 Starting PyInstaller build..."
+          pyinstaller build.spec --clean --noconfirm --log-level INFO
+
+          echo "✅ Build completed. Checking output..."
+          # 실행 파일이 정상적으로 생성되었는지 확인
+          ls -la dist/
+
+          # macOS에서 app 번들이 생성된 경우 실행 파일 추출
+          if [ -d "dist/FM-Radio-Enhanced-macOS-arm64.app" ]; then
+            echo "📱 Found app bundle, extracting executable..."
+            cp -r "dist/FM-Radio-Enhanced-macOS-arm64.app/Contents/MacOS/FM-Radio-Enhanced-macOS-arm64" "dist/"
+            ls -la dist/FM-Radio-Enhanced-macOS-arm64
+          fi
+
+          echo "🎯 macOS build finished!"
 
       - name: Build executable with PyInstaller (Windows)
         if: runner.os == 'Windows'
+        timeout-minutes: 45
         run: |
-          pyinstaller --onefile `
-            --windowed `
-            --name "${{ matrix.executable-name }}" `
-            --icon=assets/icon.ico `
-            --add-data "assets;assets" `
-            --hidden-import=usb.backend.libusb1 `
-            --hidden-import=usb.backend.libusb0 `
-            --hidden-import=usb.backend.openusb `
-            --hidden-import=PySide6.QtCore `
-            --hidden-import=PySide6.QtWidgets `
-            --hidden-import=PySide6.QtGui `
-            --collect-all=usb `
-            ic100_radio_gui.py
+          Write-Host "🔧 Building Windows executable..." -ForegroundColor Green
+          Write-Host "Python version: $(python --version)" -ForegroundColor Cyan
+          Write-Host "PyInstaller version: $(pyinstaller --version)" -ForegroundColor Cyan
+          Write-Host "Working directory: $(Get-Location)" -ForegroundColor Cyan
+          Write-Host "Files in current directory:" -ForegroundColor Cyan
+          Get-ChildItem
+
+          # 메모리 정보 확인
+          Write-Host "Memory info:" -ForegroundColor Cyan
+          Get-WmiObject -Class Win32_OperatingSystem | Select-Object TotalVisibleMemorySize, FreePhysicalMemory
+
+          # spec 파일을 사용하여 빌드
+          Write-Host "🚀 Starting PyInstaller build..." -ForegroundColor Green
+          pyinstaller build.spec --clean --noconfirm --log-level INFO
+
+          Write-Host "✅ Build completed. Checking output..." -ForegroundColor Green
+          # 실행 파일이 정상적으로 생성되었는지 확인
+          Get-ChildItem dist/
+
+          Write-Host "🎯 Windows build finished!" -ForegroundColor Green
 
       - name: Create distribution directory
         run: |
