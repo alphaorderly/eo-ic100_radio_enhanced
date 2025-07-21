@@ -13,6 +13,9 @@ from PySide6.QtWidgets import (QApplication, QWidget, QPushButton, QLabel,
                                QCheckBox, QScrollArea)
 from PySide6.QtCore import Qt, QTimer, QThread, QObject, Signal
 
+# 오디오 매니저 import
+from audio_manager import AudioManager
+
 class StationScanner(QObject):
     station_found = Signal(float, int)  # frequency, strength
     scan_progress = Signal(float)  # current frequency
@@ -279,6 +282,7 @@ class ModernRadioApp(QWidget):
         # 하드웨어 초기화
         self.fm = None
         self.selected_device = None
+        self.audio_manager = None  # 오디오 매니저 추가
         
         # 프리셋 및 스테이션 데이터
         self.presets = [None] * 6  # 6개 프리셋
@@ -336,6 +340,9 @@ class ModernRadioApp(QWidget):
                 raise Exception("Device not responding")
                 
             print("Hardware connected successfully!")
+            
+            # 오디오 매니저 초기화
+            self.audio_manager = AudioManager(self.fm)
             
             # 하드웨어 초기 상태 가져오기
             self.is_powered = self.fm.get_power()
@@ -990,8 +997,12 @@ class ModernRadioApp(QWidget):
         self.current_freq = max(88.0, min(108.0, self.current_freq + step))
         self.freq_label.setText(f"{self.current_freq:.1f}")
         
-        # 하드웨어에 실제 주파수 변경
+        # 하드웨어에 실제 주파수 변경 (pop sound 방지)
         try:
+            # 주파수 변경 전 준비 (오디오 매니저 사용)
+            if self.audio_manager:
+                self.audio_manager.frequency_change_prepare()
+            
             # 주파수를 하드웨어 단위로 변환 (MHz * 100)
             freq_val = int(self.current_freq * 100)
             
@@ -1001,6 +1012,10 @@ class ModernRadioApp(QWidget):
             else:  # 주파수 감소
                 freq_val = max(freq_val, 7600)   # 최소 76MHz  
                 self.set_freq_hardware(freq_val)
+            
+            # 주파수 변경 후 복원 (오디오 매니저 사용)
+            if self.audio_manager:
+                self.audio_manager.frequency_change_complete()
                 
         except Exception as e:
             print(f"Hardware frequency change failed: {e}")
@@ -1056,55 +1071,98 @@ class ModernRadioApp(QWidget):
         self.volume = value
         self.vol_value.setText(str(value))
         
-        # 하드웨어에 실제 볼륨 변경
-        try:
-            self.fm.set_volume(value)
-        except Exception as e:
-            print(f"Hardware volume change failed: {e}")
+        # 오디오 매니저를 통한 부드러운 볼륨 변경
+        if self.audio_manager:
+            success = self.audio_manager.set_volume_smooth(value)
+            if not success:
+                print("Failed to set volume smoothly, trying direct method")
+                try:
+                    self.fm.set_volume(value)
+                except Exception as e:
+                    print(f"Hardware volume change failed: {e}")
+        else:
+            # 기존 방식 (오디오 매니저 없을 때)
+            try:
+                self.fm.set_volume(value)
+            except Exception as e:
+                print(f"Hardware volume change failed: {e}")
         
         # 뮤트 상태이면 자동으로 해제
         if self.is_muted and value > 0:
             self.is_muted = False
             self.update_mute_state()
-            try:
-                self.fm.set_mute(False)
-            except Exception as e:
-                print(f"Hardware unmute failed: {e}")
+            if self.audio_manager:
+                self.audio_manager.soft_mute(False)
+            else:
+                try:
+                    self.fm.set_mute(False)
+                except Exception as e:
+                    print(f"Hardware unmute failed: {e}")
     
     def toggle_power(self):
         old_powered = self.is_powered
         
         if self.is_powered:
-            # 파워 오프
+            # 파워 오프 (오디오 매니저 사용)
             self.is_powered = False
-            if self.fm is not None:
+            if self.audio_manager:
+                success = self.audio_manager.power_off_sequence()
+                if not success:
+                    # 기존 방식으로 fallback
+                    try:
+                        self.fm.set_power(False)
+                    except Exception as e:
+                        print(f"Hardware power off failed: {e}")
+                        self.is_powered = old_powered
+            else:
+                # 기존 방식
                 try:
                     self.fm.set_power(False)
                 except Exception as e:
                     print(f"Hardware power off failed: {e}")
-                    self.is_powered = old_powered  # 실패 시 복원
+                    self.is_powered = old_powered
         elif self.is_recording:
             # 레코딩 중이면 레코딩 중지
             self.is_recording = False
-            if self.fm is not None:
+            if self.audio_manager:
+                success = self.audio_manager.recording_stop_sequence()
+                if not success:
+                    try:
+                        self.fm.set_recording(False)
+                    except Exception as e:
+                        print(f"Hardware recording stop failed: {e}")
+                        self.is_recording = True
+            else:
                 try:
                     self.fm.set_recording(False)
                 except Exception as e:
                     print(f"Hardware recording stop failed: {e}")
-                    self.is_recording = True  # 실패 시 복원
+                    self.is_recording = True
         else:
-            # 파워 온
+            # 파워 온 (오디오 매니저 사용)
             self.is_powered = True
-            if self.fm is not None:
+            if self.audio_manager:
+                success = self.audio_manager.power_on_sequence()
+                if not success:
+                    # 기존 방식으로 fallback
+                    try:
+                        self.fm.set_power(True)
+                        time.sleep(0.2)
+                        self.fm.set_volume(6)
+                        self.reset_hardware()
+                    except Exception as e:
+                        print(f"Hardware power on failed: {e}")
+                        self.is_powered = False
+            else:
+                # 기존 방식
                 try:
                     self.fm.set_power(True)
                     time.sleep(0.2)
                     self.fm.set_volume(6)
-                    # 하드웨어 리셋
                     self.reset_hardware()
                 except Exception as e:
                     print(f"Hardware power on failed: {e}")
-                    self.is_powered = False  # 실패 시 복원
+                    self.is_powered = False
         
         self.update_power_state()
         
@@ -1140,12 +1198,23 @@ class ModernRadioApp(QWidget):
         old_muted = self.is_muted
         self.is_muted = not self.is_muted
         
-        if self.fm is not None:
+        # 오디오 매니저를 통한 부드러운 뮤트/언뮤트
+        if self.audio_manager:
+            success = self.audio_manager.soft_mute(self.is_muted)
+            if not success:
+                # 기존 방식으로 fallback
+                try:
+                    self.fm.set_mute(self.is_muted)
+                except Exception as e:
+                    print(f"Hardware mute toggle failed: {e}")
+                    self.is_muted = old_muted
+        else:
+            # 기존 방식
             try:
                 self.fm.set_mute(self.is_muted)
             except Exception as e:
                 print(f"Hardware mute toggle failed: {e}")
-                self.is_muted = old_muted  # 실패 시 복원
+                self.is_muted = old_muted
         
         self.update_mute_state()
     
@@ -1156,7 +1225,28 @@ class ModernRadioApp(QWidget):
         old_recording = self.is_recording
         self.is_recording = not self.is_recording
         
-        if self.fm is not None:
+        # 오디오 매니저를 통한 부드러운 레코딩 시작/중지
+        if self.audio_manager:
+            if self.is_recording:
+                success = self.audio_manager.recording_start_sequence()
+            else:
+                success = self.audio_manager.recording_stop_sequence()
+            
+            if not success:
+                # 기존 방식으로 fallback
+                try:
+                    if self.is_recording:
+                        self.fm.set_recording(True)
+                        time.sleep(0.2)
+                        self.fm.set_volume(15)
+                        self.reset_hardware()
+                    else:
+                        self.fm.set_recording(False)
+                except Exception as e:
+                    print(f"Hardware recording toggle failed: {e}")
+                    self.is_recording = old_recording
+        else:
+            # 기존 방식
             try:
                 if self.is_recording:
                     self.fm.set_recording(True)
@@ -1167,7 +1257,7 @@ class ModernRadioApp(QWidget):
                     self.fm.set_recording(False)
             except Exception as e:
                 print(f"Hardware recording toggle failed: {e}")
-                self.is_recording = old_recording  # 실패 시 복원
+                self.is_recording = old_recording
         
         self.update_record_state()
     
@@ -1231,11 +1321,23 @@ class ModernRadioApp(QWidget):
         if self.fm is not None:
             try:
                 if self.is_powered:
-                    self.fm.set_power(False)
+                    if self.audio_manager:
+                        self.audio_manager.power_off_sequence()
+                    else:
+                        self.fm.set_power(False)
                 if self.is_recording:
-                    self.fm.set_recording(False)
+                    if self.audio_manager:
+                        self.audio_manager.recording_stop_sequence()
+                    else:
+                        self.fm.set_recording(False)
             except:
                 pass
+            
+            # 오디오 매니저 정리
+            if self.audio_manager:
+                self.audio_manager.cleanup()
+                self.audio_manager = None
+            
             self.fm = None
         
         # 새 기기 선택
@@ -1329,14 +1431,24 @@ class ModernRadioApp(QWidget):
             self.current_freq = freq
             self.freq_label.setText(f"{freq:.1f}")
             
-            # 하드웨어에 설정
+            # 하드웨어에 설정 (pop sound 방지)
             if self.fm is not None:
                 try:
+                    # 주파수 변경 전 준비
+                    if self.audio_manager:
+                        self.audio_manager.frequency_change_prepare()
+                    
                     self.fm.set_channel(freq)
+                    
                     # 실제 설정된 주파수 확인
                     actual_freq = self.fm.get_channel()
                     self.current_freq = actual_freq
                     self.freq_label.setText(f"{actual_freq:.1f}")
+                    
+                    # 주파수 변경 후 복원
+                    if self.audio_manager:
+                        self.audio_manager.frequency_change_complete()
+                        
                 except Exception as e:
                     print(f"Preset recall failed: {e}")
                     self.current_freq = old_freq
@@ -1635,11 +1747,21 @@ class ModernRadioApp(QWidget):
         if self.fm is not None:
             try:
                 if self.is_powered:
-                    self.fm.set_power(False)
+                    if self.audio_manager:
+                        self.audio_manager.power_off_sequence()
+                    else:
+                        self.fm.set_power(False)
                 if self.is_recording:
-                    self.fm.set_recording(False)
+                    if self.audio_manager:
+                        self.audio_manager.recording_stop_sequence()
+                    else:
+                        self.fm.set_recording(False)
             except:
                 pass
+        
+        # 오디오 매니저 정리
+        if self.audio_manager:
+            self.audio_manager.cleanup()
         
         # 타이머 정리
         if hasattr(self, 'rds_timer'):

@@ -121,19 +121,47 @@ class BesFM:
             return False
 
     def _set(self, cmd, value):
-        self._dev.ctrl_transfer(
-            BesCmd.READ.value,
-            BesCmd.SET.value,
-            cmd, value, bytearray(BesCmd.SET_DATA_LENGTH.value)
-        )
+        """USB 명령 전송 with retry mechanism"""
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                self._dev.ctrl_transfer(
+                    BesCmd.READ.value,
+                    BesCmd.SET.value,
+                    cmd, value, bytearray(BesCmd.SET_DATA_LENGTH.value)
+                )
+                # 작은 지연으로 USB 안정성 향상
+                import time
+                time.sleep(0.001)  # 1ms
+                return
+            except usb.core.USBError as e:
+                if attempt < max_retries - 1:
+                    import time
+                    time.sleep(0.01)  # 10ms 대기 후 재시도
+                    continue
+                raise e
 
     def _get(self, cmd):
-        return self._dev.ctrl_transfer(
-            BesCmd.READ.value,
-            BesCmd.GET.value,
-            cmd, BesCmd.GET_FM_INDEX.value,
-            bytearray(BesCmd.GET_DATA_LENGTH.value)
-        )
+        """USB 명령 수신 with retry mechanism"""
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                result = self._dev.ctrl_transfer(
+                    BesCmd.READ.value,
+                    BesCmd.GET.value,
+                    cmd, BesCmd.GET_FM_INDEX.value,
+                    bytearray(BesCmd.GET_DATA_LENGTH.value)
+                )
+                # 작은 지연으로 USB 안정성 향상
+                import time
+                time.sleep(0.001)  # 1ms
+                return result
+            except usb.core.USBError as e:
+                if attempt < max_retries - 1:
+                    import time
+                    time.sleep(0.01)  # 10ms 대기 후 재시도
+                    continue
+                raise e
 
     def _query(self):
         return self._dev.ctrl_transfer(
@@ -156,6 +184,7 @@ class BesFM:
     def set_power(self, b):
         if self.get_recording():
             return
+        # 전원 변경 시 지연 추가 (pop sound 방지)
         if b:
             self._set(
                 BesCmd.SET_POWER_STATE.value,
@@ -166,6 +195,8 @@ class BesFM:
                 BesCmd.SET_POWER_STATE.value,
                 BesCmd.SET_FM_IC_POWER_OFF.value
             )
+        import time
+        time.sleep(0.010)  # 10ms 지연
 
     def get_power(self):
         if self._get(BesCmd.GET_FM_IC_POWER_ON_STATE.value)[0]:
@@ -214,10 +245,13 @@ class BesFM:
         return self._get(BesCmd.GET_CURRENT_SPACING.value)[0]
 
     def set_mute(self, b):
+        # 뮤트 변경 시 지연 추가 (pop sound 방지)
         if b:
             self._set(BesCmd.SET_MUTE.value, 1)
         else:
             self._set(BesCmd.SET_MUTE.value, 0)
+        import time
+        time.sleep(0.003)  # 3ms 지연
 
     def get_mute(self):
         if self._get(BesCmd.GET_MUTE_STATE.value)[0]:
@@ -227,7 +261,10 @@ class BesFM:
 
     def set_volume(self, volume):
         assert 0 <= volume <= 15
+        # 볼륨 변경 시 약간의 지연 추가 (pop sound 방지)
         self._set(BesCmd.SET_VOLUME.value, volume)
+        import time
+        time.sleep(0.002)  # 2ms 지연
 
     def get_volume(self):
         return self._get(BesCmd.GET_CURRENT_VOLUME.value)[0]
@@ -257,9 +294,12 @@ class BesFM:
         self._set(BesCmd.SET_SEEK_STOP.value, 0)
 
     def set_channel(self, freq):
+        # 주파수 변경 시 지연 추가 (pop sound 방지)
         self._set(
             BesCmd.SET_CHANNEL.value, int(freq * 100)
             )
+        import time
+        time.sleep(0.005)  # 5ms 지연
 
     def get_channel(self):
         return struct.unpack('<H',self._get(BesCmd.GET_CURRENT_CHANNEL.value))[0] / 100
