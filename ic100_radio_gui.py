@@ -4,17 +4,14 @@ import usb.core
 import besfm
 import json
 import os
-from threading import Thread
 
 from PySide6.QtWidgets import (QApplication, QWidget, QPushButton, QLabel, 
-                               QSlider, QGridLayout, QHBoxLayout, QVBoxLayout,
-                               QFrame, QSizePolicy, QSpacerItem, QDialog, 
+                               QSlider, QHBoxLayout, QVBoxLayout,
+                               QFrame, QDialog, 
                                QListWidget, QListWidgetItem, QMessageBox,
                                QGroupBox, QTextEdit, QProgressDialog, QComboBox,
-                               QCheckBox, QLineEdit, QDockWidget, QTabWidget,
-                               QScrollArea, QSplitter)
-from PySide6.QtCore import Qt, QTimer, QPropertyAnimation, QEasingCurve, QRect, QThread, QObject, Signal
-from PySide6.QtGui import QFont, QAction
+                               QCheckBox, QScrollArea)
+from PySide6.QtCore import Qt, QTimer, QThread, QObject, Signal
 
 class StationScanner(QObject):
     station_found = Signal(float, int)  # frequency, strength
