@@ -1,0 +1,116 @@
+# PyInstaller 설정 파일
+# -*- mode: python ; coding: utf-8 -*-
+
+import sys
+from pathlib import Path
+
+# 프로젝트 루트 디렉토리
+project_root = Path(__file__).parent
+
+# 플랫폼별 설정
+if sys.platform == 'darwin':  # macOS
+    icon_file = project_root / 'assets' / 'icon.icns'
+    platform_name = 'macOS-arm64'
+    target_arch = 'arm64'
+elif sys.platform == 'win32':  # Windows
+    icon_file = project_root / 'assets' / 'icon.ico'
+    platform_name = 'Windows-x64'
+    target_arch = None
+else:
+    icon_file = None
+    platform_name = 'Linux-x64'
+    target_arch = None
+
+# 숨겨진 import들
+hidden_imports = [
+    'usb.backend.libusb1',
+    'usb.backend.libusb0', 
+    'usb.backend.openusb',
+    'PySide6.QtCore',
+    'PySide6.QtWidgets',
+    'PySide6.QtGui',
+    'json',
+    'os',
+    'sys',
+    'time'
+]
+
+# 데이터 파일들
+datas = [
+    ('assets', 'assets'),  # assets 폴더 포함
+]
+
+# 바이너리 파일들 (USB 라이브러리)
+binaries = []
+
+# 제외할 모듈들 (크기 최적화)
+excludes = [
+    'tkinter',
+    'matplotlib',
+    'numpy',
+    'scipy',
+    'pandas',
+    'IPython',
+    'jupyter',
+    'notebook',
+]
+
+a = Analysis(
+    ['ic100_radio_gui.py'],
+    pathex=[str(project_root)],
+    binaries=binaries,
+    datas=datas,
+    hiddenimports=hidden_imports,
+    hookspath=[],
+    hooksconfig={},
+    runtime_hooks=[],
+    excludes=excludes,
+    noarchive=False,
+    optimize=2,
+)
+
+pyz = PYZ(a.pure)
+
+exe = EXE(
+    pyz,
+    a.scripts,
+    a.binaries,
+    a.datas,
+    [],
+    name=f'FM-Radio-Enhanced-{platform_name}',
+    debug=False,
+    bootloader_ignore_signals=False,
+    strip=False,
+    upx=True,
+    upx_exclude=[],
+    runtime_tmpdir=None,
+    console=False,  # GUI 애플리케이션이므로 콘솔 숨김
+    disable_windowed_traceback=False,
+    argv_emulation=False,
+    target_arch=target_arch,
+    codesign_identity=None,
+    entitlements_file=None,
+    icon=str(icon_file) if icon_file and icon_file.exists() else None,
+)
+
+# macOS용 앱 번들 생성
+if sys.platform == 'darwin':
+    app = BUNDLE(
+        exe,
+        name=f'FM-Radio-Enhanced-{platform_name}.app',
+        icon=str(icon_file) if icon_file and icon_file.exists() else None,
+        bundle_identifier='com.alphaorderly.fm-radio-enhanced',
+        info_plist={
+            'CFBundleName': 'FM Radio Enhanced',
+            'CFBundleDisplayName': 'FM Radio Enhanced',
+            'CFBundleIdentifier': 'com.alphaorderly.fm-radio-enhanced',
+            'CFBundleVersion': '1.0.0',
+            'CFBundleShortVersionString': '1.0.0',
+            'CFBundleInfoDictionaryVersion': '6.0',
+            'LSMinimumSystemVersion': '11.0',
+            'NSHighResolutionCapable': True,
+            'NSRequiresAquaSystemAppearance': False,
+            'LSApplicationCategoryType': 'public.app-category.utilities',
+            'NSHumanReadableCopyright': '© 2025 AlphaOrderly. All rights reserved.',
+        }
+    )

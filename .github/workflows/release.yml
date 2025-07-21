@@ -1,0 +1,218 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*'  # 태그가 v로 시작할 때 트리거 (예: v1.0.0)
+  workflow_dispatch:  # 수동 실행 허용
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: macos-latest
+            platform: macOS-arm64
+            arch: arm64
+            python-version: '3.11'
+            executable-name: 'FM-Radio-Enhanced-macOS-arm64'
+            file-extension: ''
+          - os: windows-latest
+            platform: Windows-x64
+            arch: x64
+            python-version: '3.11'
+            executable-name: 'FM-Radio-Enhanced-Windows-x64'
+            file-extension: '.exe'
+
+    runs-on: ${{ matrix.os }}
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+        architecture: ${{ matrix.arch }}
+
+    - name: Install system dependencies (macOS)
+      if: runner.os == 'macOS'
+      run: |
+        # libusb 설치 (USB 통신을 위해 필요)
+        brew install libusb
+
+    - name: Install system dependencies (Windows)
+      if: runner.os == 'Windows'
+      run: |
+        # Windows용 libusb 설치 (vcpkg 사용)
+        choco install libusb
+
+    - name: Install Python dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install pyinstaller
+
+    - name: Build executable with PyInstaller (macOS)
+      if: runner.os == 'macOS'
+      run: |
+        pyinstaller --onefile \
+          --windowed \
+          --name "${{ matrix.executable-name }}" \
+          --icon=assets/icon.icns \
+          --add-data "assets:assets" \
+          --hidden-import=usb.backend.libusb1 \
+          --hidden-import=usb.backend.libusb0 \
+          --hidden-import=usb.backend.openusb \
+          --hidden-import=PySide6.QtCore \
+          --hidden-import=PySide6.QtWidgets \
+          --hidden-import=PySide6.QtGui \
+          --collect-all=usb \
+          --target-arch=arm64 \
+          ic100_radio_gui.py
+
+    - name: Build executable with PyInstaller (Windows)
+      if: runner.os == 'Windows'
+      run: |
+        pyinstaller --onefile `
+          --windowed `
+          --name "${{ matrix.executable-name }}" `
+          --icon=assets/icon.ico `
+          --add-data "assets;assets" `
+          --hidden-import=usb.backend.libusb1 `
+          --hidden-import=usb.backend.libusb0 `
+          --hidden-import=usb.backend.openusb `
+          --hidden-import=PySide6.QtCore `
+          --hidden-import=PySide6.QtWidgets `
+          --hidden-import=PySide6.QtGui `
+          --collect-all=usb `
+          ic100_radio_gui.py
+
+    - name: Create distribution directory
+      run: |
+        mkdir -p dist-final
+
+    - name: Prepare distribution files (macOS)
+      if: runner.os == 'macOS'
+      run: |
+        # 실행 파일을 dist-final로 복사
+        cp "dist/${{ matrix.executable-name }}" "dist-final/"
+        
+        # README와 라이선스 파일 추가
+        cp README.md dist-final/ || echo "README.md not found, skipping"
+        cp LICENSE dist-final/ || echo "LICENSE not found, skipping"
+        
+        # macOS용 실행 권한 설정
+        chmod +x "dist-final/${{ matrix.executable-name }}"
+        
+        # 압축 파일 생성
+        cd dist-final
+        tar -czf "../${{ matrix.executable-name }}.tar.gz" *
+        cd ..
+
+    - name: Prepare distribution files (Windows)
+      if: runner.os == 'Windows'
+      run: |
+        # 실행 파일을 dist-final로 복사
+        Copy-Item "dist\${{ matrix.executable-name }}${{ matrix.file-extension }}" "dist-final\"
+        
+        # README와 라이선스 파일 추가
+        if (Test-Path "README.md") { Copy-Item "README.md" "dist-final\" }
+        if (Test-Path "LICENSE") { Copy-Item "LICENSE" "dist-final\" }
+        
+        # ZIP 파일 생성
+        Compress-Archive -Path "dist-final\*" -DestinationPath "${{ matrix.executable-name }}.zip"
+
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: ${{ matrix.executable-name }}
+        path: |
+          ${{ matrix.executable-name }}.tar.gz
+          ${{ matrix.executable-name }}.zip
+        retention-days: 30
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Download all artifacts
+      uses: actions/download-artifact@v3
+      with:
+        path: artifacts
+
+    - name: Create Release
+      id: create_release
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: ${{ github.ref_name }}
+        release_name: FM Radio Enhanced ${{ github.ref_name }}
+        body: |
+          ## FM Radio Enhanced ${{ github.ref_name }}
+          
+          ### Download
+          - **macOS (ARM64)**: Download `FM-Radio-Enhanced-macOS-arm64.tar.gz`
+          - **Windows (x64)**: Download `FM-Radio-Enhanced-Windows-x64.zip`
+          
+          ### Installation
+          
+          #### macOS
+          1. Download the `.tar.gz` file
+          2. Extract: `tar -xzf FM-Radio-Enhanced-macOS-arm64.tar.gz`
+          3. Run: `./FM-Radio-Enhanced-macOS-arm64`
+          
+          #### Windows
+          1. Download the `.zip` file
+          2. Extract the ZIP file
+          3. Run: `FM-Radio-Enhanced-Windows-x64.exe`
+          
+          ### System Requirements
+          - **macOS**: macOS 11.0+ (Big Sur) with Apple Silicon (M1/M2)
+          - **Windows**: Windows 10/11 (64-bit)
+          - Compatible Samsung Galaxy device with FM radio capability
+          - USB connection
+          
+          ### Supported Devices
+          - Samsung Galaxy devices with Product IDs: 0xa054, 0xa059, 0xa05b
+          
+          ### Features
+          - FM Radio control and tuning
+          - RDS (Radio Data System) support
+          - Station presets and scanning
+          - Signal strength monitoring
+          - Volume and mute controls
+          - Recording functionality
+          - Modern, intuitive GUI
+          
+          ---
+          **Note**: This application requires a compatible Samsung Galaxy device connected via USB.
+        draft: false
+        prerelease: false
+
+    - name: Upload macOS Release Asset
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: artifacts/FM-Radio-Enhanced-macOS-arm64/FM-Radio-Enhanced-macOS-arm64.tar.gz
+        asset_name: FM-Radio-Enhanced-macOS-arm64.tar.gz
+        asset_content_type: application/gzip
+
+    - name: Upload Windows Release Asset
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: artifacts/FM-Radio-Enhanced-Windows-x64/FM-Radio-Enhanced-Windows-x64.zip
+        asset_name: FM-Radio-Enhanced-Windows-x64.zip
+        asset_content_type: application/zip
