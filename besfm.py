@@ -58,9 +58,67 @@ class BesFM_Enums(Enum):
 class BesFM:
     def __init__(self, dev: usb.core.Device):
         self._dev = dev
+        self._device_info = {
+            'vendor_id': dev.idVendor,
+            'product_id': dev.idProduct,
+            'bus': dev.bus,
+            'address': dev.address,
+            'serial_number': dev.serial_number,
+            'manufacturer': dev.manufacturer,
+            'product': dev.product
+        }
+        
         if self._dev.is_kernel_driver_active(4):
             self._dev.detach_kernel_driver(4)
         self._notify_ep = self._dev.get_active_configuration()[4,0][0]
+    
+    @staticmethod
+    def find_all_devices():
+        """모든 호환 가능한 FM 라디오 기기 찾기"""
+        compatible_devices = []
+        try:
+            devices = list(usb.core.find(find_all=True, idVendor=0x04e8))
+            for device in devices:
+                if device.idProduct in [0xa054, 0xa059, 0xa05b]:
+                    device_info = {
+                        'device': device,
+                        'vendor_id': device.idVendor,
+                        'product_id': device.idProduct,
+                        'bus': device.bus,
+                        'address': device.address,
+                        'serial_number': device.serial_number,
+                        'manufacturer': device.manufacturer or 'Samsung',
+                        'product': device.product or 'FM Radio',
+                        'description': f"Samsung FM Radio (0x{device.idProduct:04x})"
+                    }
+                    compatible_devices.append(device_info)
+        except Exception as e:
+            print(f"Error scanning for devices: {e}")
+        
+        return compatible_devices
+    
+    @staticmethod
+    def get_device_name(product_id):
+        """Product ID에 따른 기기 이름 반환"""
+        device_names = {
+            0xa054: "Samsung Galaxy FM Radio (Type A)",
+            0xa059: "Samsung Galaxy FM Radio (Type B)", 
+            0xa05b: "Samsung Galaxy FM Radio (Type C)"
+        }
+        return device_names.get(product_id, f"Samsung FM Radio (0x{product_id:04x})")
+    
+    def get_device_info(self):
+        """현재 기기 정보 반환"""
+        return self._device_info.copy()
+    
+    def is_connected(self):
+        """기기 연결 상태 확인"""
+        try:
+            # 간단한 명령을 보내서 기기가 응답하는지 확인
+            self._get(BesCmd.GET_FM_IC_POWER_ON_STATE.value)
+            return True
+        except:
+            return False
 
     def _set(self, cmd, value):
         self._dev.ctrl_transfer(
