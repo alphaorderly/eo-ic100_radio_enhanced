@@ -178,11 +178,6 @@ class DeviceSelectionDialog(QDialog):
         
         button_layout.addStretch()
         
-        self.demo_btn = QPushButton("Demo Mode")
-        self.demo_btn.setObjectName("secondary")
-        self.demo_btn.clicked.connect(self.select_demo_mode)
-        button_layout.addWidget(self.demo_btn)
-        
         self.connect_btn = QPushButton("Connect")
         self.connect_btn.clicked.connect(self.connect_selected)
         self.connect_btn.setEnabled(False)
@@ -267,11 +262,9 @@ Product: {device.product if device.product else 'FM Radio'}"""
         if 0 <= device_index < len(self.available_devices):
             self.selected_device = self.available_devices[device_index]
             self.accept()
-    
-    def select_demo_mode(self):
-        """데모 모드 선택"""
-        self.selected_device = None
-        self.accept()
+        else:
+            QMessageBox.warning(self, "No Device", "Please select a valid FM Radio device.")
+            return
 
 class ModernRadioApp(QWidget):
     def __init__(self):
@@ -322,18 +315,19 @@ class ModernRadioApp(QWidget):
         """기기 선택 다이얼로그 표시"""
         dialog = DeviceSelectionDialog(self)
         if dialog.exec() == QDialog.Accepted:
-            self.selected_device = dialog.selected_device
-            self.init_hardware()
+            if dialog.selected_device is not None:
+                self.selected_device = dialog.selected_device
+                self.init_hardware()
+            else:
+                QMessageBox.critical(self, "No Device Selected", 
+                                   "No FM Radio device was selected. The application will exit.")
+                sys.exit(1)
         else:
             # 사용자가 취소했으면 종료
             sys.exit(0)
     
     def init_hardware(self):
         """하드웨어 초기화"""
-        if self.selected_device is None:
-            print("Running in demo mode - no hardware control")
-            return
-            
         try:
             self.fm = besfm.BesFM(self.selected_device)
             
@@ -356,9 +350,9 @@ class ModernRadioApp(QWidget):
             
         except Exception as e:
             print(f"Hardware initialization failed: {e}")
-            QMessageBox.warning(self, "Hardware Error", 
-                              f"Failed to initialize hardware:\n{str(e)}\n\nRunning in demo mode.")
-            self.fm = None
+            QMessageBox.critical(self, "Hardware Error", 
+                              f"Failed to initialize hardware:\n{str(e)}\n\nThe application will exit.")
+            sys.exit(1)
     
     def setup_animations(self):
         # 레코딩 애니메이션을 위한 타이머
@@ -432,12 +426,8 @@ class ModernRadioApp(QWidget):
         device_layout.setSpacing(4)
         
         # 기기 상태 표시
-        if self.fm is not None:
-            device_status = "🟢 Hardware Connected"
-            device_info = f"Product ID: 0x{self.selected_device.idProduct:04x}"
-        else:
-            device_status = "🔴 Demo Mode"
-            device_info = "No hardware detected"
+        device_status = "🟢 Hardware Connected"
+        device_info = f"Product ID: 0x{self.selected_device.idProduct:04x}"
         
         self.device_status_label = QLabel(device_status)
         self.device_status_label.setObjectName("device-status")
@@ -1000,39 +990,34 @@ class ModernRadioApp(QWidget):
         self.current_freq = max(88.0, min(108.0, self.current_freq + step))
         self.freq_label.setText(f"{self.current_freq:.1f}")
         
-        # 하드웨어가 있으면 실제 주파수 변경
-        if self.fm is not None:
-            try:
-                # 주파수를 하드웨어 단위로 변환 (MHz * 100)
-                freq_val = int(self.current_freq * 100)
+        # 하드웨어에 실제 주파수 변경
+        try:
+            # 주파수를 하드웨어 단위로 변환 (MHz * 100)
+            freq_val = int(self.current_freq * 100)
+            
+            if step > 0:  # 주파수 증가
+                freq_val = min(freq_val, 10700)  # 최대 107MHz
+                self.set_freq_hardware(freq_val)
+            else:  # 주파수 감소
+                freq_val = max(freq_val, 7600)   # 최소 76MHz  
+                self.set_freq_hardware(freq_val)
                 
-                if step > 0:  # 주파수 증가
-                    freq_val = min(freq_val, 10700)  # 최대 107MHz
-                    self.set_freq_hardware(freq_val)
-                else:  # 주파수 감소
-                    freq_val = max(freq_val, 7600)   # 최소 76MHz  
-                    self.set_freq_hardware(freq_val)
-                    
-            except Exception as e:
-                print(f"Hardware frequency change failed: {e}")
-                # 하드웨어 실패 시 이전 값으로 복원
-                self.current_freq = old_freq
-                self.freq_label.setText(f"{self.current_freq:.1f}")
+        except Exception as e:
+            print(f"Hardware frequency change failed: {e}")
+            # 하드웨어 실패 시 이전 값으로 복원
+            self.current_freq = old_freq
+            self.freq_label.setText(f"{self.current_freq:.1f}")
     
     def set_freq_hardware(self, freq_val):
         """하드웨어 주파수 설정"""
-        if self.fm is not None:
-            self.fm.set_channel(freq_val / 100.0)
-            # 하드웨어에서 실제 설정된 값 읽어오기
-            actual_freq = self.fm.get_channel()
-            self.current_freq = actual_freq
-            self.freq_label.setText(f"{actual_freq:.1f}")
+        self.fm.set_channel(freq_val / 100.0)
+        # 하드웨어에서 실제 설정된 값 읽어오기
+        actual_freq = self.fm.get_channel()
+        self.current_freq = actual_freq
+        self.freq_label.setText(f"{actual_freq:.1f}")
     
     def update_from_hardware(self):
         """하드웨어에서 현재 상태 업데이트"""
-        if self.fm is None:
-            return
-            
         try:
             # 파워 상태 업데이트
             power_changed = self.is_powered != self.fm.get_power()
@@ -1071,22 +1056,20 @@ class ModernRadioApp(QWidget):
         self.volume = value
         self.vol_value.setText(str(value))
         
-        # 하드웨어가 있으면 실제 볼륨 변경
-        if self.fm is not None:
-            try:
-                self.fm.set_volume(value)
-            except Exception as e:
-                print(f"Hardware volume change failed: {e}")
+        # 하드웨어에 실제 볼륨 변경
+        try:
+            self.fm.set_volume(value)
+        except Exception as e:
+            print(f"Hardware volume change failed: {e}")
         
         # 뮤트 상태이면 자동으로 해제
         if self.is_muted and value > 0:
             self.is_muted = False
             self.update_mute_state()
-            if self.fm is not None:
-                try:
-                    self.fm.set_mute(False)
-                except Exception as e:
-                    print(f"Hardware unmute failed: {e}")
+            try:
+                self.fm.set_mute(False)
+            except Exception as e:
+                print(f"Hardware unmute failed: {e}")
     
     def toggle_power(self):
         old_powered = self.is_powered
@@ -1283,16 +1266,11 @@ class ModernRadioApp(QWidget):
     
     def update_device_info(self):
         """기기 정보 업데이트"""
-        if self.fm is not None:
-            device_status = "🟢 Hardware Connected"
-            # besfm의 get_device_name 사용
-            device_name = besfm.BesFM.get_device_name(self.selected_device.idProduct)
-            device_info = f"{device_name}"
-            self.device_status_label.setStyleSheet("color: #059669;")
-        else:
-            device_status = "🔴 Demo Mode"
-            device_info = "No hardware detected"
-            self.device_status_label.setStyleSheet("color: #dc2626;")
+        device_status = "🟢 Hardware Connected"
+        # besfm의 get_device_name 사용
+        device_name = besfm.BesFM.get_device_name(self.selected_device.idProduct)
+        device_info = f"{device_name}"
+        self.device_status_label.setStyleSheet("color: #059669;")
         
         self.device_status_label.setText(device_status)
         self.device_info_label.setText(device_info)
