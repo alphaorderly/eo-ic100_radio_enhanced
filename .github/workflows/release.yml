@@ -223,14 +223,15 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           name: FM Radio Enhanced ${{ github.ref_name }}
+          generate_release_notes: true
           body: |
-            ## FM Radio Enhanced ${{ github.ref_name }}
+            ## 📻 FM Radio Enhanced ${{ github.ref_name }}
 
-            ### Download
-            - **macOS (ARM64)**: Download `FM-Radio-Enhanced-macOS-arm64.tar.gz`
-            - **Windows (x64)**: Download `FM-Radio-Enhanced-Windows-x64.zip`
+            ### 📥 Download
+            - **🍎 macOS (ARM64)**: Download `FM-Radio-Enhanced-macOS-arm64.tar.gz`
+            - **🪟 Windows (x64)**: Download `FM-Radio-Enhanced-Windows-x64.zip`
 
-            ### Installation
+            ### 🚀 Installation
 
             #### macOS
             1. Download the `.tar.gz` file
@@ -242,16 +243,16 @@ jobs:
             2. Extract the ZIP file
             3. Run: `FM-Radio-Enhanced-Windows-x64.exe`
 
-            ### System Requirements
+            ### 💻 System Requirements
             - **macOS**: macOS 11.0+ (Big Sur) with Apple Silicon (M1/M2)
             - **Windows**: Windows 10/11 (64-bit)
             - Compatible Samsung Galaxy device with FM radio capability
             - USB connection
 
-            ### Supported Devices
+            ### 📱 Supported Devices
             - Samsung Galaxy devices with Product IDs: 0xa054, 0xa059, 0xa05b
 
-            ### Features
+            ### ✨ Features
             - FM Radio control and tuning
             - RDS (Radio Data System) support
             - Station presets and scanning
@@ -261,7 +262,9 @@ jobs:
             - Modern, intuitive GUI
 
             ---
-            **Note**: This application requires a compatible Samsung Galaxy device connected via USB.
+            **⚠️ Note**: This application requires a compatible Samsung Galaxy device connected via USB.
+
+            ## 📝 Changelog
           files: |
             artifacts/FM-Radio-Enhanced-macOS-arm64/FM-Radio-Enhanced-macOS-arm64.tar.gz
             artifacts/FM-Radio-Enhanced-Windows-x64/FM-Radio-Enhanced-Windows-x64.zip
