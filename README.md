@@ -2,6 +2,15 @@
 
 Samsung Galaxy 이어폰의 FM 라디오 기능을 PC/Mac에서 사용할 수 있는 애플리케이션입니다.
 
+> 이 프로젝트는 [kjy00302/eo-ic100_radio](https://github.com/kjy00302/eo-ic100_radio)를 포크하여 개선한 버전입니다.
+>
+> **주요 개선사항:**
+>
+> - 현대적인 GUI 인터페이스
+> - 오디오 팝 사운드 방지 기능
+> - 크로스 플랫폼 지원 (Windows/macOS)
+> - 사용자 친화적인 설치 및 실행
+
 ## 지원 기기
 
 - Samsung Galaxy 이어폰 (EO-IC100 시리즈)
@@ -64,6 +73,10 @@ Samsung Galaxy 이어폰의 FM 라디오 기능을 PC/Mac에서 사용할 수 �
 - USB 케이블을 다시 연결해보세요
 - 다른 USB 포트를 사용해보세요
 - Samsung Galaxy 기기에서 USB 디버깅이 활성화되어 있는지 확인하세요
+
+## 원본 프로젝트
+
+이 프로젝트는 [kjy00302](https://github.com/kjy00302)님의 [eo-ic100_radio](https://github.com/kjy00302/eo-ic100_radio) 프로젝트를 기반으로 개발되었습니다. 원본 프로젝트에 감사드립니다.
 
 ## 라이센스
 

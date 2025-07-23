@@ -616,6 +616,29 @@ class ModernRadioApp(QWidget):
         scan_layout.addWidget(self.auto_scan_btn)
         
         preset_layout.addLayout(scan_layout)
+        
+        # 스캔된 스테이션 네비게이션 버튼들
+        nav_layout = QHBoxLayout()
+        
+        self.prev_station_btn = QPushButton("◀ Prev Station")
+        self.prev_station_btn.setObjectName("secondary-btn")
+        self.prev_station_btn.clicked.connect(lambda: self.navigate_station(-1))
+        self.prev_station_btn.setEnabled(False)  # 초기에는 비활성화
+        nav_layout.addWidget(self.prev_station_btn)
+        
+        self.next_station_btn = QPushButton("Next Station ▶")
+        self.next_station_btn.setObjectName("secondary-btn")
+        self.next_station_btn.clicked.connect(lambda: self.navigate_station(1))
+        self.next_station_btn.setEnabled(False)  # 초기에는 비활성화
+        nav_layout.addWidget(self.next_station_btn)
+        
+        self.show_stations_btn = QPushButton("Show Stations")
+        self.show_stations_btn.setObjectName("secondary-btn")
+        self.show_stations_btn.clicked.connect(self.show_station_browser)
+        self.show_stations_btn.setEnabled(False)  # 초기에는 비활성화
+        nav_layout.addWidget(self.show_stations_btn)
+        
+        preset_layout.addLayout(nav_layout)
         parent_layout.addWidget(preset_group)
         
         # 프리셋 업데이트
@@ -1626,14 +1649,177 @@ class ModernRadioApp(QWidget):
             self.scan_thread.quit()
             self.scan_thread.wait()
             
-        # 결과 표시
-        if stations:
-            msg = f"Found {len(stations)} stations:\n\n"
-            for station in stations:
-                msg += f"{station['frequency']:.1f} MHz (Signal: {station['strength']})\n"
-            QMessageBox.information(self, "Scan Complete", msg)
+        # found_stations을 업데이트
+        self.found_stations = stations if stations else []
+        
+        # 네비게이션 버튼들 활성화/비활성화
+        has_stations = len(self.found_stations) > 0
+        self.prev_station_btn.setEnabled(has_stations)
+        self.next_station_btn.setEnabled(has_stations)
+        self.show_stations_btn.setEnabled(has_stations)
+        
+        # 결과 표시 및 탐색 다이얼로그 표시
+        if self.found_stations:
+            self.show_station_browser()
         else:
             QMessageBox.information(self, "Scan Complete", "No stations found")
+    
+    def show_station_browser(self):
+        """발견된 스테이션 브라우저 다이얼로그 표시"""
+        if not self.found_stations:
+            return
+            
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Found Stations")
+        dialog.setFixedSize(400, 300)
+        dialog.setStyleSheet(self.get_main_stylesheet())
+        
+        layout = QVBoxLayout(dialog)
+        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setSpacing(12)
+        
+        # 제목
+        title = QLabel(f"Found {len(self.found_stations)} stations")
+        title.setStyleSheet("font-size: 16px; font-weight: 600; margin-bottom: 8px;")
+        layout.addWidget(title)
+        
+        # 스테이션 목록
+        station_list = QListWidget()
+        station_list.setStyleSheet("""
+            QListWidget {
+                border: 1px solid #e2e8f0;
+                border-radius: 6px;
+                background-color: #f8fafc;
+                font-size: 13px;
+            }
+            QListWidget::item {
+                padding: 8px;
+                border-bottom: 1px solid #e2e8f0;
+            }
+            QListWidget::item:selected {
+                background-color: #3b82f6;
+                color: white;
+            }
+        """)
+        
+        # 주파수순으로 정렬
+        sorted_stations = sorted(self.found_stations, key=lambda x: x['frequency'])
+        for station in sorted_stations:
+            item_text = f"{station['frequency']:.1f} MHz (Signal: {station['strength']})"
+            item = QListWidgetItem(item_text)
+            item.setData(Qt.UserRole, station['frequency'])
+            station_list.addItem(item)
+        
+        layout.addWidget(station_list)
+        
+        # 네비게이션 버튼들
+        nav_layout = QHBoxLayout()
+        
+        prev_btn = QPushButton("◀ Previous")
+        prev_btn.setObjectName("secondary")
+        prev_btn.clicked.connect(lambda: self.navigate_station(-1))
+        nav_layout.addWidget(prev_btn)
+        
+        tune_btn = QPushButton("Tune to Selected")
+        tune_btn.clicked.connect(lambda: self.tune_to_selected_station(station_list))
+        nav_layout.addWidget(tune_btn)
+        
+        next_btn = QPushButton("Next ▶")
+        next_btn.setObjectName("secondary")
+        next_btn.clicked.connect(lambda: self.navigate_station(1))
+        nav_layout.addWidget(next_btn)
+        
+        layout.addLayout(nav_layout)
+        
+        # 하단 버튼들
+        button_layout = QHBoxLayout()
+        close_btn = QPushButton("Close")
+        close_btn.setObjectName("secondary")
+        close_btn.clicked.connect(dialog.reject)
+        button_layout.addWidget(close_btn)
+        
+        layout.addLayout(button_layout)
+        
+        # 현재 인덱스 초기화
+        self.current_station_index = 0
+        
+        dialog.exec()
+    
+    def navigate_station(self, direction):
+        """스테이션 네비게이션 (direction: -1=이전, 1=다음)"""
+        if not self.found_stations:
+            return
+            
+        # 주파수순으로 정렬
+        sorted_stations = sorted(self.found_stations, key=lambda x: x['frequency'])
+        
+        # 현재 주파수와 가장 가까운 스테이션 찾기
+        current_freq = self.current_freq
+        closest_index = 0
+        min_diff = float('inf')
+        
+        for i, station in enumerate(sorted_stations):
+            diff = abs(station['frequency'] - current_freq)
+            if diff < min_diff:
+                min_diff = diff
+                closest_index = i
+        
+        # 다음 또는 이전 스테이션으로 이동
+        new_index = closest_index + direction
+        
+        # 범위 체크
+        if new_index < 0:
+            new_index = 0
+        elif new_index >= len(sorted_stations):
+            new_index = len(sorted_stations) - 1
+        
+        # 선택된 스테이션으로 튜닝
+        target_station = sorted_stations[new_index]
+        self.tune_to_frequency(target_station['frequency'])
+        
+        print(f"Navigated to station: {target_station['frequency']:.1f} MHz")
+    
+    def tune_to_selected_station(self, station_list):
+        """선택된 스테이션으로 튜닝"""
+        current_item = station_list.currentItem()
+        if current_item is not None:
+            frequency = current_item.data(Qt.UserRole)
+            self.tune_to_frequency(frequency)
+    
+    def tune_to_frequency(self, frequency):
+        """특정 주파수로 튜닝"""
+        if not self.is_powered or self.fm is None:
+            print("Cannot tune: radio not powered or device not available")
+            return
+            
+        old_freq = self.current_freq
+        
+        print(f"Tuning from {old_freq:.1f} to {frequency:.1f} MHz")
+        
+        try:
+            # 주파수 변경 전 준비 (오디오 매니저 사용)
+            if self.audio_manager:
+                self.audio_manager.frequency_change_prepare()
+            
+            # 주파수 설정
+            success = self.set_freq_hardware(frequency)
+            
+            if success:
+                self.current_freq = frequency
+                self.freq_label.setText(f"{self.current_freq:.1f}")
+                print(f"Successfully tuned to {self.current_freq:.1f} MHz")
+            else:
+                print(f"Failed to tune to {frequency:.1f} MHz")
+            
+            # 주파수 변경 후 복원 (오디오 매니저 사용)
+            if self.audio_manager:
+                self.audio_manager.frequency_change_complete()
+                
+        except Exception as e:
+            print(f"Tuning failed: {e}")
+            # 실패 시 이전 값으로 복원
+            self.current_freq = old_freq
+            self.freq_label.setText(f"{self.current_freq:.1f}")
     
     def toggle_rds(self):
         """RDS 토글"""
