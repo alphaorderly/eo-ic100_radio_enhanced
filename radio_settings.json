@@ -1,12 +1,13 @@
 {
   "presets": [
-    null,
+    88.1,
     null,
     null,
     null,
     null,
     null
   ],
-  "last_frequency": 88.5,
-  "last_volume": 8
+  "last_frequency": 104.5,
+  "last_volume": 8,
+  "is_korean": true
 }

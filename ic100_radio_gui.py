@@ -10,56 +10,11 @@ from PySide6.QtWidgets import (QApplication, QWidget, QPushButton, QLabel,
                                QFrame, QDialog, 
                                QListWidget, QListWidgetItem, QMessageBox,
                                QGroupBox, QTextEdit, QProgressDialog, QComboBox,
-                               QCheckBox, QScrollArea)
+                               QCheckBox, QScrollArea, QGridLayout)
 from PySide6.QtCore import Qt, QTimer, QThread, QObject, Signal
 
 # 오디오 매니저 import
 from audio_manager import AudioManager
-
-class StationScanner(QObject):
-    station_found = Signal(float, int)  # frequency, strength
-    scan_progress = Signal(float)  # current frequency
-    scan_finished = Signal(list)  # list of found stations
-    
-    def __init__(self, fm_device):
-        super().__init__()
-        self.fm = fm_device
-        self.should_stop = False
-        
-    def scan(self):
-        """주파수 스캔 실행"""
-        found_stations = []
-        current_freq = 88.0
-        
-        while current_freq <= 108.0 and not self.should_stop:
-            self.scan_progress.emit(current_freq)
-            
-            try:
-                if self.fm is not None:
-                    self.fm.set_channel(current_freq)
-                    time.sleep(0.5)  # 안정화 대기
-                    
-                    status = self.fm.get_status()
-                    if status.get('type') in ['tune', 'seek'] and status.get('success'):
-                        strength = status.get('strength', 0)
-                        if strength > 30:  # 신호 강도 임계값
-                            station_info = {
-                                'frequency': current_freq,
-                                'strength': strength,
-                                'name': f"{current_freq:.1f} MHz"
-                            }
-                            found_stations.append(station_info)
-                            self.station_found.emit(current_freq, strength)
-                            
-            except Exception as e:
-                print(f"Scan error at {current_freq}: {e}")
-            
-            current_freq += 0.2  # 200kHz 간격
-            
-        self.scan_finished.emit(found_stations)
-    
-    def stop(self):
-        self.should_stop = True
 
 class DeviceSelectionDialog(QDialog):
     def __init__(self, parent=None):
@@ -298,12 +253,12 @@ class ModernRadioApp(QWidget):
         
         # 프리셋 및 스테이션 데이터
         self.presets = [None] * 6  # 6개 프리셋
-        self.found_stations = []
         self.settings_file = "radio_settings.json"
         
+        # 언어 설정 (기본: 한글)
+        self.is_korean = True
+        
         # 스캔 관련
-        self.scan_thread = None
-        self.scan_worker = None
         self.scan_progress = None
         
         # 타이머들
@@ -488,7 +443,7 @@ class ModernRadioApp(QWidget):
         device_layout.addWidget(self.device_info_label)
         
         # 기기 변경 버튼
-        self.change_device_btn = QPushButton("Change Device")
+        self.change_device_btn = QPushButton(self.get_text("기기 변경", "Change Device"))
         self.change_device_btn.setObjectName("device-btn")
         self.change_device_btn.clicked.connect(self.change_device)
         device_layout.addWidget(self.change_device_btn)
@@ -522,7 +477,8 @@ class ModernRadioApp(QWidget):
         """신호 강도 표시 섹션"""
         signal_layout = QHBoxLayout()
         
-        signal_label = QLabel("Signal:")
+        # 신호 강도 바
+        signal_label = QLabel(self.get_text("신호:", "Signal:"))
         signal_label.setObjectName("section-label")
         signal_layout.addWidget(signal_label)
         
@@ -579,11 +535,30 @@ class ModernRadioApp(QWidget):
     
     def create_preset_section(self, parent_layout):
         """프리셋 및 스캔 섹션"""
-        preset_group = QGroupBox("Station Presets & Scan")
+        preset_group = QGroupBox(self.get_text("스테이션 프리셋 & 스캔", "Station Presets & Scan"))
         preset_layout = QVBoxLayout(preset_group)
         
-        # 프리셋 버튼들
-        preset_buttons_layout = QHBoxLayout()
+        # 언어 변경 버튼
+        language_layout = QHBoxLayout()
+        language_layout.addStretch()
+        self.language_btn = QPushButton(self.get_text("🌍 English", "🌍 한국어"))
+        self.language_btn.setObjectName("secondary-btn")
+        self.language_btn.clicked.connect(self.toggle_language)
+        self.language_btn.setFixedWidth(80)
+        language_layout.addWidget(self.language_btn)
+        preset_layout.addLayout(language_layout)
+        
+        # 프리셋 사용법 안내
+        preset_info = QLabel(self.get_text("💾 클릭: 저장된 방송 불러오기  |  우클릭: 현재 주파수 저장", "💾 Click: Load station  |  Right-click: Save current frequency"))
+        preset_info.setObjectName("preset-info")
+        preset_info.setAlignment(Qt.AlignCenter)
+        preset_layout.addWidget(preset_info)
+        
+        # 프리셋 버튼들을 2행 3열로 배치
+        preset_buttons_container = QWidget()
+        preset_buttons_layout = QGridLayout(preset_buttons_container)
+        preset_buttons_layout.setSpacing(8)
+        
         self.preset_buttons = []
         for i in range(6):
             btn = QPushButton(f"P{i+1}")
@@ -591,54 +566,35 @@ class ModernRadioApp(QWidget):
             btn.clicked.connect(lambda checked, idx=i: self.recall_preset(idx))
             btn.setContextMenuPolicy(Qt.CustomContextMenu)
             btn.customContextMenuRequested.connect(lambda pos, idx=i: self.save_preset_menu(idx))
-            btn.setToolTip("Click to recall preset, Right-click to save current frequency")
+            btn.setToolTip(self.get_preset_tooltip(i))
+            btn.setMinimumHeight(60)  # 버튼 높이 증가
+            btn.setMinimumWidth(80)   # 버튼 너비 증가
+            
+            # 2행 3열로 배치
+            row = i // 3
+            col = i % 3
+            preset_buttons_layout.addWidget(btn, row, col)
+            
             self.preset_buttons.append(btn)
-            preset_buttons_layout.addWidget(btn)
         
-        preset_layout.addLayout(preset_buttons_layout)
+        preset_layout.addWidget(preset_buttons_container)
         
         # 스캔 버튼들
         scan_layout = QHBoxLayout()
         
-        self.scan_up_btn = QPushButton("Scan ↑")
-        self.scan_up_btn.setObjectName("scan-btn")
-        self.scan_up_btn.clicked.connect(self.scan_up)
-        scan_layout.addWidget(self.scan_up_btn)
-        
-        self.scan_down_btn = QPushButton("Scan ↓")
+        # 스캔 다운 버튼
+        self.scan_down_btn = QPushButton(self.get_text("스캔 ↓", "Scan ↓"))
         self.scan_down_btn.setObjectName("scan-btn")
         self.scan_down_btn.clicked.connect(self.scan_down)
         scan_layout.addWidget(self.scan_down_btn)
         
-        self.auto_scan_btn = QPushButton("Auto Scan")
-        self.auto_scan_btn.setObjectName("secondary-btn")
-        self.auto_scan_btn.clicked.connect(self.auto_scan_stations)
-        scan_layout.addWidget(self.auto_scan_btn)
+        # 스캔 업 버튼
+        self.scan_up_btn = QPushButton(self.get_text("스캔 ↑", "Scan ↑"))
+        self.scan_up_btn.setObjectName("scan-btn")
+        self.scan_up_btn.clicked.connect(self.scan_up)
+        scan_layout.addWidget(self.scan_up_btn)
         
         preset_layout.addLayout(scan_layout)
-        
-        # 스캔된 스테이션 네비게이션 버튼들
-        nav_layout = QHBoxLayout()
-        
-        self.prev_station_btn = QPushButton("◀ Prev Station")
-        self.prev_station_btn.setObjectName("secondary-btn")
-        self.prev_station_btn.clicked.connect(lambda: self.navigate_station(-1))
-        self.prev_station_btn.setEnabled(False)  # 초기에는 비활성화
-        nav_layout.addWidget(self.prev_station_btn)
-        
-        self.next_station_btn = QPushButton("Next Station ▶")
-        self.next_station_btn.setObjectName("secondary-btn")
-        self.next_station_btn.clicked.connect(lambda: self.navigate_station(1))
-        self.next_station_btn.setEnabled(False)  # 초기에는 비활성화
-        nav_layout.addWidget(self.next_station_btn)
-        
-        self.show_stations_btn = QPushButton("Show Stations")
-        self.show_stations_btn.setObjectName("secondary-btn")
-        self.show_stations_btn.clicked.connect(self.show_station_browser)
-        self.show_stations_btn.setEnabled(False)  # 초기에는 비활성화
-        nav_layout.addWidget(self.show_stations_btn)
-        
-        preset_layout.addLayout(nav_layout)
         parent_layout.addWidget(preset_group)
         
         # 프리셋 업데이트
@@ -651,7 +607,7 @@ class ModernRadioApp(QWidget):
         
         # 볼륨 레이블과 값
         vol_header = QHBoxLayout()
-        vol_label = QLabel("Volume")
+        vol_label = QLabel(self.get_text("볼륨", "Volume"))
         vol_label.setObjectName("section-label")
         self.vol_value = QLabel(str(self.volume))
         self.vol_value.setObjectName("volume-value")
@@ -673,11 +629,11 @@ class ModernRadioApp(QWidget):
     
     def create_rds_section(self, parent_layout):
         """RDS 정보 섹션"""
-        rds_group = QGroupBox("RDS Information")
+        rds_group = QGroupBox(self.get_text("RDS 정보", "RDS Information"))
         rds_layout = QVBoxLayout(rds_group)
         
         # RDS 스테이션 이름
-        self.rds_station = QLabel("No RDS Data")
+        self.rds_station = QLabel(self.get_text("RDS 데이터 없음", "No RDS Data"))
         self.rds_station.setObjectName("rds-station")
         rds_layout.addWidget(self.rds_station)
         
@@ -688,7 +644,7 @@ class ModernRadioApp(QWidget):
         rds_layout.addWidget(self.rds_text)
         
         # RDS 활성화 버튼
-        self.rds_btn = QPushButton("Enable RDS")
+        self.rds_btn = QPushButton(self.get_text("RDS 활성화", "Enable RDS"))
         self.rds_btn.setObjectName("secondary-btn")
         self.rds_btn.clicked.connect(self.toggle_rds)
         rds_layout.addWidget(self.rds_btn)
@@ -701,19 +657,19 @@ class ModernRadioApp(QWidget):
         controls_layout.setSpacing(12)
         
         # 파워 버튼
-        self.power_btn = QPushButton("Power")
+        self.power_btn = QPushButton(self.get_text("전원", "Power"))
         self.power_btn.setObjectName("power-btn")
         self.power_btn.clicked.connect(self.toggle_power)
         controls_layout.addWidget(self.power_btn)
         
         # 뮤트 버튼
-        self.mute_btn = QPushButton("Mute")
+        self.mute_btn = QPushButton(self.get_text("음소거", "Mute"))
         self.mute_btn.setObjectName("secondary-btn")
         self.mute_btn.clicked.connect(self.toggle_mute)
         controls_layout.addWidget(self.mute_btn)
         
         # 레코드 버튼
-        self.record_btn = QPushButton("Record")
+        self.record_btn = QPushButton(self.get_text("녹음", "Record"))
         self.record_btn.setObjectName("record-btn")
         self.record_btn.clicked.connect(self.toggle_record)
         controls_layout.addWidget(self.record_btn)
@@ -728,12 +684,73 @@ class ModernRadioApp(QWidget):
         settings_layout = QHBoxLayout()
         settings_layout.addStretch()
         
-        self.settings_btn = QPushButton("Settings")
+        self.settings_btn = QPushButton(self.get_text("설정", "Settings"))
         self.settings_btn.setObjectName("secondary-btn")
         self.settings_btn.clicked.connect(self.show_settings)
         settings_layout.addWidget(self.settings_btn)
         
         parent_layout.addLayout(settings_layout)
+    
+    def get_text(self, korean_text, english_text):
+        """언어 설정에 따른 텍스트 반환"""
+        return korean_text if self.is_korean else english_text
+    
+    def toggle_language(self):
+        """언어 토글"""
+        self.is_korean = not self.is_korean
+        self.update_all_texts()
+        
+        # 설정 저장
+        self.save_settings()
+    
+    def update_all_texts(self):
+        """모든 UI 텍스트 업데이트"""
+        # 언어 버튼 텍스트 업데이트
+        self.language_btn.setText(self.get_text("🌍 English", "🌍 한국어"))
+        
+        # 그룹박스 제목 업데이트
+        preset_group = self.findChild(QGroupBox)
+        if preset_group:
+            preset_group.setTitle(self.get_text("스테이션 프리셋 & 스캔", "Station Presets & Scan"))
+        
+        # 스캔 버튼 텍스트 업데이트
+        self.scan_down_btn.setText(self.get_text("스캔 ↓", "Scan ↓"))
+        self.scan_up_btn.setText(self.get_text("스캔 ↑", "Scan ↑"))
+        
+        # 안내 텍스트 업데이트
+        preset_info = self.findChild(QLabel, "preset-info")
+        if preset_info:
+            preset_info.setText(self.get_text("💾 클릭: 저장된 방송 불러오기  |  우클릭: 현재 주파수 저장", "💾 Click: Load station  |  Right-click: Save current frequency"))
+        
+        # 프리셋 버튼 업데이트
+        self.update_preset_buttons()
+        
+        # 다른 컨트롤 버튼들 업데이트
+        if hasattr(self, 'power_btn'):
+            self.power_btn.setText(self.get_text("전원" if not self.is_powered else "켜짐", "Power" if not self.is_powered else "ON"))
+        if hasattr(self, 'mute_btn'):
+            self.mute_btn.setText(self.get_text("음소거 해제" if self.is_muted else "음소거", "Unmute" if self.is_muted else "Mute"))
+        if hasattr(self, 'record_btn'):
+            self.record_btn.setText(self.get_text("녹음 중지" if self.is_recording else "녹음", "Stop" if self.is_recording else "Record"))
+        if hasattr(self, 'rds_btn'):
+            self.rds_btn.setText(self.get_text("RDS 비활성화" if self.rds_enabled else "RDS 활성화", "Disable RDS" if self.rds_enabled else "Enable RDS"))
+        if hasattr(self, 'settings_btn'):
+            self.settings_btn.setText(self.get_text("설정", "Settings"))
+        if hasattr(self, 'change_device_btn'):
+            self.change_device_btn.setText(self.get_text("기기 변경", "Change Device"))
+    
+    def get_preset_tooltip(self, index):
+        """프리셋 버튼 툴팁 생성"""
+        if index < len(self.presets) and self.presets[index] is not None:
+            return self.get_text(
+                f"📻 프리셋 {index+1}: {self.presets[index]:.1f} MHz\n클릭: 이 방송국 불러오기\n우클릭: 현재 주파수 저장 ({self.current_freq:.1f} MHz)",
+                f"📻 Preset {index+1}: {self.presets[index]:.1f} MHz\nLeft-click: Load this station\nRight-click: Save current frequency ({self.current_freq:.1f} MHz)"
+            )
+        else:
+            return self.get_text(
+                f"💾 빈 프리셋 {index+1}\n우클릭: 현재 주파수 저장 ({self.current_freq:.1f} MHz)",
+                f"💾 Empty Preset {index+1}\nRight-click: Save current frequency ({self.current_freq:.1f} MHz)"
+            )
     
     def get_main_stylesheet(self):
         return """
@@ -989,10 +1006,12 @@ class ModernRadioApp(QWidget):
             background-color: #e5e7eb;
             color: #374151;
             border: 1px solid #d1d5db;
-            border-radius: 4px;
-            padding: 6px 12px;
+            border-radius: 6px;
+            padding: 8px 12px;
             font-weight: 500;
-            min-width: 40px;
+            min-width: 80px;
+            min-height: 60px;
+            font-size: 12px;
         }
         
         #preset-btn:hover {
@@ -1003,6 +1022,16 @@ class ModernRadioApp(QWidget):
             background-color: #3b82f6;
             color: white;
             border-color: #2563eb;
+        }
+        
+        #preset-info {
+            font-size: 11px;
+            color: #6b7280;
+            font-style: italic;
+            padding: 4px;
+            background-color: #f8fafc;
+            border-radius: 4px;
+            margin-bottom: 8px;
         }
         
         #signal-bar {
@@ -1072,25 +1101,22 @@ class ModernRadioApp(QWidget):
         
         # 하드웨어에 실제 주파수 변경
         try:
-            # 주파수 변경 전 준비 (오디오 매니저 사용)
-            if self.audio_manager:
-                self.audio_manager.frequency_change_prepare()
-            
-            # 주파수 설정
+            # 주파수 설정 (오디오 매니저 없이 단순하게)
             success = self.set_freq_hardware(new_freq)
             
             if success:
                 self.current_freq = new_freq
                 self.freq_label.setText(f"{self.current_freq:.1f}")
+                
+                # UI 강제 업데이트
+                self.freq_label.repaint()
+                QApplication.processEvents()
+                
                 print(f"Frequency successfully changed to {self.current_freq:.1f} MHz")
             else:
                 print(f"Failed to set frequency to {new_freq:.1f} MHz")
                 # 실패 시 이전 값 유지
                 self.freq_label.setText(f"{self.current_freq:.1f}")
-            
-            # 주파수 변경 후 복원 (오디오 매니저 사용)
-            if self.audio_manager:
-                self.audio_manager.frequency_change_complete()
                 
         except Exception as e:
             print(f"Hardware frequency change failed: {e}")
@@ -1356,10 +1382,10 @@ class ModernRadioApp(QWidget):
     
     def update_power_state(self):
         if self.is_powered:
-            self.power_btn.setText("ON")
+            self.power_btn.setText(self.get_text("켜짐", "ON"))
             self.power_btn.setProperty("data-state", "on")
         else:
-            self.power_btn.setText("OFF")
+            self.power_btn.setText(self.get_text("꺼짐", "OFF"))
             self.power_btn.setProperty("data-state", "off")
         
         # 스타일 다시 적용
@@ -1370,15 +1396,16 @@ class ModernRadioApp(QWidget):
         enabled = self.is_powered
         for btn in [self.btn_freq_up_big, self.btn_freq_up_small, 
                    self.btn_freq_down_big, self.btn_freq_down_small,
+                   self.scan_up_btn, self.scan_down_btn,
                    self.mute_btn, self.record_btn, self.volume_slider]:
             btn.setEnabled(enabled)
     
     def update_mute_state(self):
         if self.is_muted:
-            self.mute_btn.setText("Unmute")
+            self.mute_btn.setText(self.get_text("음소거 해제", "Unmute"))
             self.mute_btn.setProperty("data-state", "active")
         else:
-            self.mute_btn.setText("Mute")
+            self.mute_btn.setText(self.get_text("음소거", "Mute"))
             self.mute_btn.setProperty("data-state", "")
         
         # 스타일 다시 적용
@@ -1387,11 +1414,11 @@ class ModernRadioApp(QWidget):
     
     def update_record_state(self):
         if self.is_recording:
-            self.record_btn.setText("Stop")
+            self.record_btn.setText(self.get_text("녹음 중지", "Stop"))
             self.record_btn.setProperty("data-state", "recording")
             self.record_timer.start(800)  # 800ms 간격으로 깜빡임
         else:
-            self.record_btn.setText("Record")
+            self.record_btn.setText(self.get_text("녹음", "Record"))
             self.record_btn.setProperty("data-state", "")
             self.record_timer.stop()
         
@@ -1478,9 +1505,11 @@ class ModernRadioApp(QWidget):
                 with open(self.settings_file, 'r') as f:
                     settings = json.load(f)
                     self.presets = settings.get('presets', [None] * 6)
+                    self.is_korean = settings.get('is_korean', True)  # 기본값: 한글
         except Exception as e:
             print(f"Settings load failed: {e}")
             self.presets = [None] * 6
+            self.is_korean = True
     
     def save_settings(self):
         """설정 저장"""
@@ -1488,7 +1517,8 @@ class ModernRadioApp(QWidget):
             settings = {
                 'presets': self.presets,
                 'last_frequency': self.current_freq,
-                'last_volume': self.volume
+                'last_volume': self.volume,
+                'is_korean': self.is_korean
             }
             with open(self.settings_file, 'w') as f:
                 json.dump(settings, f, indent=2)
@@ -1524,13 +1554,19 @@ class ModernRadioApp(QWidget):
             self.current_freq = freq
             self.freq_label.setText(f"{freq:.1f}")
             
-            # 하드웨어에 설정 (pop sound 방지)
+            # UI 강제 업데이트
+            self.freq_label.repaint()
+            QApplication.processEvents()
+            
+            # 프리셋 로드 피드백
+            btn = self.preset_buttons[index]
+            original_text = btn.text()
+            btn.setText(f"📻 {self.get_text('불러오는 중', 'Loading')}\n{freq:.1f}")
+            btn.setStyleSheet("background-color: #f59e0b; color: white;")
+            
+            # 하드웨어에 설정 (단순하게)
             if self.fm is not None:
                 try:
-                    # 주파수 변경 전 준비
-                    if self.audio_manager:
-                        self.audio_manager.frequency_change_prepare()
-                    
                     self.fm.set_channel(freq)
                     
                     # 실제 설정된 주파수 확인
@@ -1538,14 +1574,30 @@ class ModernRadioApp(QWidget):
                     self.current_freq = actual_freq
                     self.freq_label.setText(f"{actual_freq:.1f}")
                     
-                    # 주파수 변경 후 복원
-                    if self.audio_manager:
-                        self.audio_manager.frequency_change_complete()
+                    # UI 강제 업데이트
+                    self.freq_label.repaint()
+                    QApplication.processEvents()
+                    
+                    # 성공 피드백
+                    btn.setText(f"✅ {self.get_text('불러옴', 'Loaded')}\n{actual_freq:.1f}")
+                    btn.setStyleSheet("background-color: #10b981; color: white;")
                         
                 except Exception as e:
                     print(f"Preset recall failed: {e}")
                     self.current_freq = old_freq
                     self.freq_label.setText(f"{old_freq:.1f}")
+                    
+                    # 실패 피드백
+                    btn.setText(f"❌ {self.get_text('실패', 'Failed')}\n{freq:.1f}")
+                    btn.setStyleSheet("background-color: #ef4444; color: white;")
+            
+            # 1.5초 후 원래 상태로 복원
+            QTimer.singleShot(1500, lambda: [
+                btn.setText(original_text),
+                btn.setStyleSheet(""),
+                btn.style().unpolish(btn),
+                btn.style().polish(btn)
+            ])
     
     def save_preset_menu(self, index):
         """프리셋 저장 (우클릭 메뉴)"""
@@ -1556,21 +1608,33 @@ class ModernRadioApp(QWidget):
         self.update_preset_buttons()
         self.save_settings()
         
-        # 사용자에게 피드백
+        # 사용자에게 명확한 피드백
         btn = self.preset_buttons[index]
         original_text = btn.text()
-        btn.setText("Saved!")
-        QTimer.singleShot(1000, lambda: btn.setText(original_text))
+        btn.setText(f"✅ {self.get_text('저장됨!', 'Saved!')}\n{self.current_freq:.1f}")
+        btn.setStyleSheet("background-color: #10b981; color: white;")
+        
+        # 2초 후 원래 상태로 복원
+        QTimer.singleShot(2000, lambda: [
+            btn.setText(original_text),
+            btn.setStyleSheet(""),
+            btn.style().unpolish(btn),
+            btn.style().polish(btn)
+        ])
     
     def update_preset_buttons(self):
         """프리셋 버튼 상태 업데이트"""
         for i, btn in enumerate(self.preset_buttons):
             if i < len(self.presets) and self.presets[i] is not None:
-                btn.setText(f"P{i+1}\n{self.presets[i]:.1f}")
+                # 저장된 주파수가 있으면 주파수 표시
+                btn.setText(f"P{i+1}\n📻 {self.presets[i]:.1f}")
                 btn.setProperty("data-state", "saved")
+                btn.setToolTip(self.get_preset_tooltip(i))
             else:
-                btn.setText(f"P{i+1}")
+                # 빈 슬롯이면 저장 안내 표시
+                btn.setText(f"P{i+1}\n💾 {self.get_text('비어있음', 'Empty')}")
                 btn.setProperty("data-state", "")
+                btn.setToolTip(self.get_preset_tooltip(i))
             
             # 스타일 다시 적용
             btn.style().unpolish(btn)
@@ -1579,247 +1643,129 @@ class ModernRadioApp(QWidget):
     def scan_up(self):
         """위쪽 주파수 스캔"""
         if not self.is_powered or self.fm is None:
+            print(f"Scan up blocked: powered={self.is_powered}, fm_available={self.fm is not None}")
             return
+        
+        print(f"Starting scan up from {self.current_freq:.1f} MHz")
+        
         try:
-            self.fm.seek_up()
-            self.fm._wait(timeout=5000)
-            actual_freq = self.fm.get_channel()
-            self.current_freq = actual_freq
-            self.freq_label.setText(f"{actual_freq:.1f}")
+            # 현재 주파수 저장
+            start_freq = self.current_freq
+            max_attempts = 10  # 안전장치: 최대 10번 시도
+            
+            for attempt in range(max_attempts):
+                print(f"Scan up attempt {attempt + 1}/{max_attempts}")
+                
+                # 스캔 실행 (USB 알림 대기 없이)
+                self.fm.seek_up()
+                
+                # 점진적으로 더 오래 대기 (0.5초부터 시작, 매번 0.2초씩 증가, 최대 2.0초)
+                import time
+                wait_time = min(0.5 + (attempt * 0.2), 2.0)
+                time.sleep(wait_time)
+                
+                # 새 주파수 읽기
+                actual_freq = self.fm.get_channel()
+                print(f"Scan up attempt {attempt + 1} result: {actual_freq:.1f} MHz (waited {wait_time:.1f}s)")
+                
+                # 주파수가 실제로 변경되었는지 확인
+                if abs(actual_freq - start_freq) > 0.05:  # 0.05 MHz 이상 차이가 있으면 변경된 것
+                    print(f"✅ Frequency successfully changed from {start_freq:.1f} to {actual_freq:.1f} MHz")
+                    
+                    # 주파수 업데이트
+                    self.current_freq = actual_freq
+                    self.freq_label.setText(f"{actual_freq:.1f}")
+                    
+                    # UI 강제 업데이트
+                    self.freq_label.repaint()
+                    QApplication.processEvents()
+                    
+                    return  # 성공적으로 변경되었으므로 종료
+                else:
+                    print(f"❌ No frequency change in attempt {attempt + 1}: {start_freq:.1f} -> {actual_freq:.1f}")
+                    if attempt < max_attempts - 1:
+                        print("🔄 Retrying scan with longer wait time...")
+                        time.sleep(0.1)  # 재시도 전 잠시 대기
+                    else:
+                        print(f"⚠️ Maximum attempts ({max_attempts}) reached for scan up")
+            
+            # 최대 시도 횟수에 도달했지만 마지막 주파수라도 업데이트
+            final_freq = self.fm.get_channel()
+            if abs(final_freq - self.current_freq) > 0.01:  # 약간이라도 변경되었으면
+                print(f"🔧 Updating to final frequency: {final_freq:.1f} MHz")
+                self.current_freq = final_freq
+                self.freq_label.setText(f"{final_freq:.1f}")
+                self.freq_label.repaint()
+                QApplication.processEvents()
+                
         except Exception as e:
             print(f"Scan up failed: {e}")
+            import traceback
+            traceback.print_exc()
     
     def scan_down(self):
         """아래쪽 주파수 스캔"""
         if not self.is_powered or self.fm is None:
-            return
-        try:
-            self.fm.seek_down()
-            self.fm._wait(timeout=5000)
-            actual_freq = self.fm.get_channel()
-            self.current_freq = actual_freq
-            self.freq_label.setText(f"{actual_freq:.1f}")
-        except Exception as e:
-            print(f"Scan down failed: {e}")
-    
-    def auto_scan_stations(self):
-        """자동으로 모든 방송국 스캔"""
-        if not self.is_powered or self.fm is None:
+            print(f"Scan down blocked: powered={self.is_powered}, fm_available={self.fm is not None}")
             return
         
-        self.found_stations = []
-        self.scan_progress = QProgressDialog("Scanning stations...", "Cancel", 88, 108, self)
-        self.scan_progress.setWindowModality(Qt.WindowModal)
-        self.scan_progress.setValue(88)
-        
-        # 별도 스레드에서 스캔 실행
-        self.scan_thread = QThread()
-        self.scan_worker = StationScanner(self.fm)
-        self.scan_worker.moveToThread(self.scan_thread)
-        
-        self.scan_worker.station_found.connect(self.on_station_found)
-        self.scan_worker.scan_progress.connect(self.on_scan_progress)
-        self.scan_worker.scan_finished.connect(self.on_scan_finished)
-        self.scan_thread.started.connect(self.scan_worker.scan)
-        
-        self.scan_progress.canceled.connect(self.scan_worker.stop)
-        self.scan_thread.start()
-    
-    def on_station_found(self, frequency, strength):
-        """스캔에서 방송국 발견시"""
-        station = {
-            'frequency': frequency,
-            'strength': strength,
-            'name': f"{frequency:.1f} MHz"
-        }
-        self.found_stations.append(station)
-        print(f"Found station: {frequency:.1f} MHz (Strength: {strength})")
-    
-    def on_scan_progress(self, frequency):
-        """스캔 진행 상황 업데이트"""
-        if self.scan_progress:
-            self.scan_progress.setValue(int(frequency))
-    
-    def on_scan_finished(self, stations):
-        """스캔 완료"""
-        if self.scan_progress:
-            self.scan_progress.close()
-            
-        if self.scan_thread:
-            self.scan_thread.quit()
-            self.scan_thread.wait()
-            
-        # found_stations을 업데이트
-        self.found_stations = stations if stations else []
-        
-        # 네비게이션 버튼들 활성화/비활성화
-        has_stations = len(self.found_stations) > 0
-        self.prev_station_btn.setEnabled(has_stations)
-        self.next_station_btn.setEnabled(has_stations)
-        self.show_stations_btn.setEnabled(has_stations)
-        
-        # 결과 표시 및 탐색 다이얼로그 표시
-        if self.found_stations:
-            self.show_station_browser()
-        else:
-            QMessageBox.information(self, "Scan Complete", "No stations found")
-    
-    def show_station_browser(self):
-        """발견된 스테이션 브라우저 다이얼로그 표시"""
-        if not self.found_stations:
-            return
-            
-        dialog = QDialog(self)
-        dialog.setWindowTitle("Found Stations")
-        dialog.setFixedSize(400, 300)
-        dialog.setStyleSheet(self.get_main_stylesheet())
-        
-        layout = QVBoxLayout(dialog)
-        layout.setContentsMargins(16, 16, 16, 16)
-        layout.setSpacing(12)
-        
-        # 제목
-        title = QLabel(f"Found {len(self.found_stations)} stations")
-        title.setStyleSheet("font-size: 16px; font-weight: 600; margin-bottom: 8px;")
-        layout.addWidget(title)
-        
-        # 스테이션 목록
-        station_list = QListWidget()
-        station_list.setStyleSheet("""
-            QListWidget {
-                border: 1px solid #e2e8f0;
-                border-radius: 6px;
-                background-color: #f8fafc;
-                font-size: 13px;
-            }
-            QListWidget::item {
-                padding: 8px;
-                border-bottom: 1px solid #e2e8f0;
-            }
-            QListWidget::item:selected {
-                background-color: #3b82f6;
-                color: white;
-            }
-        """)
-        
-        # 주파수순으로 정렬
-        sorted_stations = sorted(self.found_stations, key=lambda x: x['frequency'])
-        for station in sorted_stations:
-            item_text = f"{station['frequency']:.1f} MHz (Signal: {station['strength']})"
-            item = QListWidgetItem(item_text)
-            item.setData(Qt.UserRole, station['frequency'])
-            station_list.addItem(item)
-        
-        layout.addWidget(station_list)
-        
-        # 네비게이션 버튼들
-        nav_layout = QHBoxLayout()
-        
-        prev_btn = QPushButton("◀ Previous")
-        prev_btn.setObjectName("secondary")
-        prev_btn.clicked.connect(lambda: self.navigate_station(-1))
-        nav_layout.addWidget(prev_btn)
-        
-        tune_btn = QPushButton("Tune to Selected")
-        tune_btn.clicked.connect(lambda: self.tune_to_selected_station(station_list))
-        nav_layout.addWidget(tune_btn)
-        
-        next_btn = QPushButton("Next ▶")
-        next_btn.setObjectName("secondary")
-        next_btn.clicked.connect(lambda: self.navigate_station(1))
-        nav_layout.addWidget(next_btn)
-        
-        layout.addLayout(nav_layout)
-        
-        # 하단 버튼들
-        button_layout = QHBoxLayout()
-        close_btn = QPushButton("Close")
-        close_btn.setObjectName("secondary")
-        close_btn.clicked.connect(dialog.reject)
-        button_layout.addWidget(close_btn)
-        
-        layout.addLayout(button_layout)
-        
-        # 현재 인덱스 초기화
-        self.current_station_index = 0
-        
-        dialog.exec()
-    
-    def navigate_station(self, direction):
-        """스테이션 네비게이션 (direction: -1=이전, 1=다음)"""
-        if not self.found_stations:
-            return
-            
-        # 주파수순으로 정렬
-        sorted_stations = sorted(self.found_stations, key=lambda x: x['frequency'])
-        
-        # 현재 주파수와 가장 가까운 스테이션 찾기
-        current_freq = self.current_freq
-        closest_index = 0
-        min_diff = float('inf')
-        
-        for i, station in enumerate(sorted_stations):
-            diff = abs(station['frequency'] - current_freq)
-            if diff < min_diff:
-                min_diff = diff
-                closest_index = i
-        
-        # 다음 또는 이전 스테이션으로 이동
-        new_index = closest_index + direction
-        
-        # 범위 체크
-        if new_index < 0:
-            new_index = 0
-        elif new_index >= len(sorted_stations):
-            new_index = len(sorted_stations) - 1
-        
-        # 선택된 스테이션으로 튜닝
-        target_station = sorted_stations[new_index]
-        self.tune_to_frequency(target_station['frequency'])
-        
-        print(f"Navigated to station: {target_station['frequency']:.1f} MHz")
-    
-    def tune_to_selected_station(self, station_list):
-        """선택된 스테이션으로 튜닝"""
-        current_item = station_list.currentItem()
-        if current_item is not None:
-            frequency = current_item.data(Qt.UserRole)
-            self.tune_to_frequency(frequency)
-    
-    def tune_to_frequency(self, frequency):
-        """특정 주파수로 튜닝"""
-        if not self.is_powered or self.fm is None:
-            print("Cannot tune: radio not powered or device not available")
-            return
-            
-        old_freq = self.current_freq
-        
-        print(f"Tuning from {old_freq:.1f} to {frequency:.1f} MHz")
+        print(f"Starting scan down from {self.current_freq:.1f} MHz")
         
         try:
-            # 주파수 변경 전 준비 (오디오 매니저 사용)
-            if self.audio_manager:
-                self.audio_manager.frequency_change_prepare()
+            # 현재 주파수 저장
+            start_freq = self.current_freq
+            max_attempts = 10  # 안전장치: 최대 10번 시도
             
-            # 주파수 설정
-            success = self.set_freq_hardware(frequency)
+            for attempt in range(max_attempts):
+                print(f"Scan down attempt {attempt + 1}/{max_attempts}")
+                
+                # 스캔 실행 (USB 알림 대기 없이)
+                self.fm.seek_down()
+                
+                # 점진적으로 더 오래 대기 (0.5초부터 시작, 매번 0.2초씩 증가, 최대 2.0초)
+                import time
+                wait_time = min(0.5 + (attempt * 0.2), 2.0)
+                time.sleep(wait_time)
+                
+                # 새 주파수 읽기
+                actual_freq = self.fm.get_channel()
+                print(f"Scan down attempt {attempt + 1} result: {actual_freq:.1f} MHz (waited {wait_time:.1f}s)")
+                
+                # 주파수가 실제로 변경되었는지 확인
+                if abs(actual_freq - start_freq) > 0.05:  # 0.05 MHz 이상 차이가 있으면 변경된 것
+                    print(f"✅ Frequency successfully changed from {start_freq:.1f} to {actual_freq:.1f} MHz")
+                    
+                    # 주파수 업데이트
+                    self.current_freq = actual_freq
+                    self.freq_label.setText(f"{actual_freq:.1f}")
+                    
+                    # UI 강제 업데이트
+                    self.freq_label.repaint()
+                    QApplication.processEvents()
+                    
+                    return  # 성공적으로 변경되었으므로 종료
+                else:
+                    print(f"❌ No frequency change in attempt {attempt + 1}: {start_freq:.1f} -> {actual_freq:.1f}")
+                    if attempt < max_attempts - 1:
+                        print("🔄 Retrying scan with longer wait time...")
+                        time.sleep(0.1)  # 재시도 전 잠시 대기
+                    else:
+                        print(f"⚠️ Maximum attempts ({max_attempts}) reached for scan down")
             
-            if success:
-                self.current_freq = frequency
-                self.freq_label.setText(f"{self.current_freq:.1f}")
-                print(f"Successfully tuned to {self.current_freq:.1f} MHz")
-            else:
-                print(f"Failed to tune to {frequency:.1f} MHz")
-            
-            # 주파수 변경 후 복원 (오디오 매니저 사용)
-            if self.audio_manager:
-                self.audio_manager.frequency_change_complete()
+            # 최대 시도 횟수에 도달했지만 마지막 주파수라도 업데이트
+            final_freq = self.fm.get_channel()
+            if abs(final_freq - self.current_freq) > 0.01:  # 약간이라도 변경되었으면
+                print(f"🔧 Updating to final frequency: {final_freq:.1f} MHz")
+                self.current_freq = final_freq
+                self.freq_label.setText(f"{final_freq:.1f}")
+                self.freq_label.repaint()
+                QApplication.processEvents()
                 
         except Exception as e:
-            print(f"Tuning failed: {e}")
-            # 실패 시 이전 값으로 복원
-            self.current_freq = old_freq
-            self.freq_label.setText(f"{self.current_freq:.1f}")
+            print(f"Scan down failed: {e}")
+            import traceback
+            traceback.print_exc()
+    
     
     def toggle_rds(self):
         """RDS 토글"""
@@ -1837,7 +1783,7 @@ class ModernRadioApp(QWidget):
                     self.rds_timer.start(2000)  # 2초마다 RDS 체크
                 else:
                     self.rds_timer.stop()
-                    self.rds_station.setText("RDS Disabled")
+                    self.rds_station.setText(self.get_text("RDS 비활성화됨", "RDS Disabled"))
                     self.rds_text.setText("")
                     
             except Exception as e:
@@ -1846,10 +1792,10 @@ class ModernRadioApp(QWidget):
     def update_rds_button(self):
         """RDS 버튼 상태 업데이트"""
         if self.rds_enabled:
-            self.rds_btn.setText("Disable RDS")
+            self.rds_btn.setText(self.get_text("RDS 비활성화", "Disable RDS"))
             self.rds_btn.setProperty("data-state", "active")
         else:
-            self.rds_btn.setText("Enable RDS")
+            self.rds_btn.setText(self.get_text("RDS 활성화", "Enable RDS"))
             self.rds_btn.setProperty("data-state", "")
         
         self.rds_btn.style().unpolish(self.rds_btn)
@@ -1899,14 +1845,14 @@ class ModernRadioApp(QWidget):
     def create_settings_dialog(self):
         """설정 다이얼로그 생성"""
         dialog = QDialog(self)
-        dialog.setWindowTitle("Settings")
+        dialog.setWindowTitle(self.get_text("설정", "Settings"))
         dialog.setFixedSize(350, 400)
         dialog.setStyleSheet(self.get_main_stylesheet())
         
         layout = QVBoxLayout(dialog)
         
         # 주파수 대역 설정
-        band_group = QGroupBox("Frequency Band")
+        band_group = QGroupBox(self.get_text("주파수 대역", "Frequency Band"))
         band_layout = QVBoxLayout(band_group)
         
         self.band_combo = QComboBox()
@@ -1920,7 +1866,7 @@ class ModernRadioApp(QWidget):
         layout.addWidget(band_group)
         
         # 채널 간격 설정
-        spacing_group = QGroupBox("Channel Spacing")
+        spacing_group = QGroupBox(self.get_text("채널 간격", "Channel Spacing"))
         spacing_layout = QVBoxLayout(spacing_group)
         
         self.spacing_combo = QComboBox()
@@ -1929,10 +1875,10 @@ class ModernRadioApp(QWidget):
         layout.addWidget(spacing_group)
         
         # 모노/스테레오 설정
-        audio_group = QGroupBox("Audio Settings")
+        audio_group = QGroupBox(self.get_text("오디오 설정", "Audio Settings"))
         audio_layout = QVBoxLayout(audio_group)
         
-        self.mono_checkbox = QCheckBox("Force Mono")
+        self.mono_checkbox = QCheckBox(self.get_text("모노 강제", "Force Mono"))
         audio_layout.addWidget(self.mono_checkbox)
         layout.addWidget(audio_group)
         
@@ -1951,10 +1897,10 @@ class ModernRadioApp(QWidget):
         
         # 버튼
         button_layout = QHBoxLayout()
-        apply_btn = QPushButton("Apply")
+        apply_btn = QPushButton(self.get_text("적용", "Apply"))
         apply_btn.setObjectName("secondary-btn")
         apply_btn.clicked.connect(lambda: self.apply_settings(dialog))
-        cancel_btn = QPushButton("Cancel")
+        cancel_btn = QPushButton(self.get_text("취소", "Cancel"))
         cancel_btn.setObjectName("secondary-btn")
         cancel_btn.clicked.connect(dialog.reject)
         
@@ -2026,13 +1972,6 @@ class ModernRadioApp(QWidget):
             self.signal_timer.stop()
         if hasattr(self, 'record_timer'):
             self.record_timer.stop()
-            
-        # 스캔 스레드 정리
-        if hasattr(self, 'scan_thread') and self.scan_thread:
-            if hasattr(self, 'scan_worker'):
-                self.scan_worker.stop()
-            self.scan_thread.quit()
-            self.scan_thread.wait()
         
         event.accept()
 
