@@ -24,14 +24,20 @@ hidden_imports = [
     'PySide6.QtWidgets',
     'PySide6.QtGui',
     'besfm',
+    'audio_manager',
     'json',
     'os',
     'sys',
-    'time'
+    'time',
+    'threading',
+    'platform'
 ]
 
-# 데이터 파일들 (assets 제거)
-datas = []
+# 데이터 파일들
+datas = [
+    ('audio_manager.py', '.'),
+    ('besfm.py', '.'),
+]
 
 # 바이너리 파일들 (USB 라이브러리)
 binaries = []
@@ -49,7 +55,7 @@ excludes = [
 ]
 
 a = Analysis(
-    ['ic100_radio_gui.py'],
+    ['main.py'],
     pathex=[],
     binaries=binaries,
     datas=datas,

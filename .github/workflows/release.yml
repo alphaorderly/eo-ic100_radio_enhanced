@@ -238,6 +238,10 @@ jobs:
             2. Extract: `tar -xzf FM-Radio-Enhanced-macOS-arm64.tar.gz`
             3. Run: `./FM-Radio-Enhanced-macOS-arm64`
 
+            **If you get permission errors on macOS:**
+            - Run with sudo: `sudo ./FM-Radio-Enhanced-macOS-arm64`
+            - Or grant USB device access in System Preferences → Security & Privacy
+
             #### Windows
             1. Download the `.zip` file
             2. Extract the ZIP file

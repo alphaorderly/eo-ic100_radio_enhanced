@@ -1,40 +1,70 @@
-# I can't believe it's a radio!
+# FM Radio Enhanced
 
-Python proof of concept of using EO-IC100's FM radio function.
+Samsung Galaxy 이어폰의 FM 라디오 기능을 PC/Mac에서 사용할 수 있는 애플리케이션입니다.
 
-Based on decompiled Note10 framework.
+## 지원 기기
 
-Tested on EO-IC100BBEGKR (Korean model of EO-IC100) firmware version 0.56_050401_aa
+- Samsung Galaxy 이어폰 (EO-IC100 시리즈)
+- USB로 연결 가능한 Samsung Galaxy 스마트폰
 
-## Features
+## 다운로드 및 설치
 
-Functions working:
+### 1. 실행 파일 다운로드 (권장)
 
-- Turn on/off radio
-- Frequency tuning with smooth transitions
-- Set volume/mute with pop sound prevention
-- Get RDS data
-- Station presets and scanning
-- Modern GUI with device selection
-- Cross-platform support (macOS, Windows)
+**[릴리스 페이지](../../releases)**에서 운영체제에 맞는 파일을 다운로드하세요:
 
-## Audio Improvements
+- **Mac 사용자**: `FM-Radio-Enhanced-macOS-arm64.tar.gz` 다운로드
+- **Windows 사용자**: `FM-Radio-Enhanced-Windows-x64.zip` 다운로드
 
-This enhanced version includes several improvements to reduce pop sounds:
+### 2. 설치 및 실행
 
-- **Smooth Volume Control**: Gradual volume changes prevent sudden audio spikes
-- **Soft Mute/Unmute**: Progressive muting reduces clicking sounds
-- **Frequency Change Buffering**: Volume is temporarily lowered during frequency changes
-- **Power Sequence Optimization**: Proper startup/shutdown sequences minimize pops
-- **USB Communication Stability**: Retry mechanisms and timing improvements
-- **Platform-Specific Tuning**: Optimized settings for macOS, Windows, and Linux
+#### Mac 사용자
 
-## Todos
+1. 다운로드한 파일을 더블클릭해서 압축 해제
+2. 터미널을 열고 압축 해제된 폴더로 이동
+3. 다음 명령어로 실행:
+   ```bash
+   sudo ./FM-Radio-Enhanced-macOS-arm64
+   ```
 
-- Add more function
-- Further optimize audio transitions
-- Add user-configurable audio settings
+#### Windows 사용자
 
-## Notes
+1. 다운로드한 ZIP 파일을 압축 해제
+2. `FM-Radio-Enhanced-Windows-x64.exe` 파일을 더블클릭해서 실행
 
-⚠️ **Pop Sound**: While significantly reduced, occasional pop sounds may still occur due to hardware limitations. The software implements multiple mitigation strategies to minimize this issue.
+## 사용법
+
+1. **기기 연결**: Samsung Galaxy 이어폰이나 스마트폰을 USB로 컴퓨터에 연결
+2. **애플리케이션 실행**: 위 설치 방법에 따라 프로그램 실행
+3. **기기 선택**: 연결된 기기 목록에서 FM 라디오 지원 기기 선택
+4. **라디오 청취**: Power 버튼을 눌러 라디오 켜고 주파수 조정
+
+## 주요 기능
+
+- **주파수 조정**: +1.0, +0.1 MHz 단위로 정밀 조정
+- **볼륨 조절**: 0-15 단계 볼륨 조절
+- **프리셋 저장**: 즐겨듣는 주파수 6개까지 저장
+- **자동 스캔**: 수신 가능한 방송국 자동 검색
+- **RDS 정보**: 방송국 이름 및 곡 정보 표시
+
+## 문제 해결
+
+### Mac에서 "권한 거부" 오류가 발생하는 경우
+
+- 반드시 `sudo` 명령어를 사용해서 실행하세요
+- USB 기기를 다시 연결해보세요
+
+### Windows에서 실행이 안 되는 경우
+
+- 관리자 권한으로 실행해보세요
+- Windows Defender에서 차단했는지 확인하세요
+
+### 기기가 인식되지 않는 경우
+
+- USB 케이블을 다시 연결해보세요
+- 다른 USB 포트를 사용해보세요
+- Samsung Galaxy 기기에서 USB 디버깅이 활성화되어 있는지 확인하세요
+
+## 라이센스
+
+이 프로젝트는 오픈소스입니다.

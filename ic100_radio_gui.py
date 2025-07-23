@@ -99,13 +99,25 @@ class DeviceSelectionDialog(QDialog):
                 selection-background-color: #3b82f6;
                 selection-color: white;
                 font-size: 13px;
+                color: #1f2937;
             }
             QListWidget::item {
                 padding: 8px;
                 border-bottom: 1px solid #e2e8f0;
+                color: #1f2937;
+                background-color: transparent;
             }
             QListWidget::item:hover {
                 background-color: #f1f5f9;
+                color: #1f2937;
+            }
+            QListWidget::item:selected {
+                background-color: #3b82f6;
+                color: white;
+            }
+            QListWidget::item:selected:hover {
+                background-color: #2563eb;
+                color: white;
             }
             QTextEdit {
                 border: 1px solid #e2e8f0;
@@ -333,6 +345,7 @@ class ModernRadioApp(QWidget):
     def init_hardware(self):
         """하드웨어 초기화"""
         try:
+            print(f"Initializing hardware with device: {self.selected_device}")
             self.fm = besfm.BesFM(self.selected_device)
             
             # 연결 상태 확인
@@ -342,23 +355,51 @@ class ModernRadioApp(QWidget):
             print("Hardware connected successfully!")
             
             # 오디오 매니저 초기화
-            self.audio_manager = AudioManager(self.fm)
+            try:
+                self.audio_manager = AudioManager(self.fm)
+                print("Audio manager initialized")
+            except Exception as e:
+                print(f"Audio manager initialization failed: {e}")
+                self.audio_manager = None
             
             # 하드웨어 초기 상태 가져오기
-            self.is_powered = self.fm.get_power()
-            self.is_recording = self.fm.get_recording()
+            try:
+                self.is_powered = self.fm.get_power()
+                self.is_recording = self.fm.get_recording()
+                
+                if self.is_powered or self.is_recording:
+                    # 하드웨어에서 현재 값들 읽어오기
+                    channel = self.fm.get_channel()
+                    self.current_freq = channel
+                    self.volume = self.fm.get_volume()
+                    self.is_muted = self.fm.get_mute()
+                    print(f"Hardware state: freq={self.current_freq:.1f}MHz, vol={self.volume}, muted={self.is_muted}")
+                else:
+                    print("Hardware is powered off")
+                    
+            except Exception as e:
+                print(f"Warning: Could not read initial hardware state: {e}")
+                # 기본값 사용
+                self.current_freq = 88.5
+                self.volume = 8
+                self.is_muted = False
             
-            if self.is_powered or self.is_recording:
-                # 하드웨어에서 현재 값들 읽어오기
-                channel = self.fm.get_channel()
-                self.current_freq = channel
-                self.volume = self.fm.get_volume()
-                self.is_muted = self.fm.get_mute()
-            
+        except PermissionError as e:
+            print(f"Permission error: {e}")
+            error_msg = f"USB Device Access Permission Denied\n\n{str(e)}\n\n"
+            error_msg += "Try running the application with:\n"
+            error_msg += "sudo python3 ic100_radio_gui.py\n\n"
+            error_msg += "Or use the provided start_radio.sh script."
+            QMessageBox.critical(self, "Permission Error", error_msg)
+            sys.exit(1)
         except Exception as e:
             print(f"Hardware initialization failed: {e}")
-            QMessageBox.critical(self, "Hardware Error", 
-                              f"Failed to initialize hardware:\n{str(e)}\n\nThe application will exit.")
+            error_msg = f"Failed to initialize hardware:\n{str(e)}\n\n"
+            error_msg += "Please check:\n"
+            error_msg += "1. USB device is properly connected\n"
+            error_msg += "2. No other applications are using the device\n"
+            error_msg += "3. Device drivers are installed correctly"
+            QMessageBox.critical(self, "Hardware Error", error_msg)
             sys.exit(1)
     
     def setup_animations(self):
@@ -380,8 +421,8 @@ class ModernRadioApp(QWidget):
         # 스크롤 영역 생성
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
-        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
-        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarNever)
+        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         
         # 스크롤 내용 위젯
         scroll_content = QWidget()
@@ -990,28 +1031,39 @@ class ModernRadioApp(QWidget):
         """
     
     def change_frequency(self, step):
-        if not self.is_powered:
+        if not self.is_powered or self.fm is None:
+            print(f"Cannot change frequency: powered={self.is_powered}, fm_device={self.fm is not None}")
             return
         
         old_freq = self.current_freq
-        self.current_freq = max(88.0, min(108.0, self.current_freq + step))
-        self.freq_label.setText(f"{self.current_freq:.1f}")
+        new_freq = self.current_freq + step
         
-        # 하드웨어에 실제 주파수 변경 (pop sound 방지)
+        # 주파수 범위 검증 (88.0 ~ 108.0 MHz)
+        new_freq = max(88.0, min(108.0, new_freq))
+        
+        if new_freq == self.current_freq:
+            print(f"Frequency already at limit: {self.current_freq:.1f} MHz")
+            return
+            
+        print(f"Changing frequency from {old_freq:.1f} to {new_freq:.1f} MHz")
+        
+        # 하드웨어에 실제 주파수 변경
         try:
             # 주파수 변경 전 준비 (오디오 매니저 사용)
             if self.audio_manager:
                 self.audio_manager.frequency_change_prepare()
             
-            # 주파수를 하드웨어 단위로 변환 (MHz * 100)
-            freq_val = int(self.current_freq * 100)
+            # 주파수 설정
+            success = self.set_freq_hardware(new_freq)
             
-            if step > 0:  # 주파수 증가
-                freq_val = min(freq_val, 10700)  # 최대 107MHz
-                self.set_freq_hardware(freq_val)
-            else:  # 주파수 감소
-                freq_val = max(freq_val, 7600)   # 최소 76MHz  
-                self.set_freq_hardware(freq_val)
+            if success:
+                self.current_freq = new_freq
+                self.freq_label.setText(f"{self.current_freq:.1f}")
+                print(f"Frequency successfully changed to {self.current_freq:.1f} MHz")
+            else:
+                print(f"Failed to set frequency to {new_freq:.1f} MHz")
+                # 실패 시 이전 값 유지
+                self.freq_label.setText(f"{self.current_freq:.1f}")
             
             # 주파수 변경 후 복원 (오디오 매니저 사용)
             if self.audio_manager:
@@ -1023,13 +1075,39 @@ class ModernRadioApp(QWidget):
             self.current_freq = old_freq
             self.freq_label.setText(f"{self.current_freq:.1f}")
     
-    def set_freq_hardware(self, freq_val):
+    def set_freq_hardware(self, frequency):
         """하드웨어 주파수 설정"""
-        self.fm.set_channel(freq_val / 100.0)
-        # 하드웨어에서 실제 설정된 값 읽어오기
-        actual_freq = self.fm.get_channel()
-        self.current_freq = actual_freq
-        self.freq_label.setText(f"{actual_freq:.1f}")
+        try:
+            if self.fm is None:
+                print("FM device not available")
+                return False
+                
+            # 주파수 범위 재검증
+            if frequency < 88.0 or frequency > 108.0:
+                print(f"Frequency {frequency:.1f} MHz out of range (88.0-108.0)")
+                return False
+                
+            print(f"Setting hardware frequency to {frequency:.1f} MHz")
+            
+            # 하드웨어에 주파수 설정
+            self.fm.set_channel(frequency)
+            
+            # 잠시 대기 후 실제 설정된 값 확인
+            time.sleep(0.1)
+            actual_freq = self.fm.get_channel()
+            
+            print(f"Hardware reports frequency as {actual_freq:.1f} MHz")
+            
+            # 설정된 주파수가 요청한 주파수와 비슷한지 확인 (0.2 MHz 오차 허용)
+            if abs(actual_freq - frequency) <= 0.2:
+                return True
+            else:
+                print(f"Frequency mismatch: requested {frequency:.1f}, got {actual_freq:.1f}")
+                return False
+                
+        except Exception as e:
+            print(f"Error setting hardware frequency: {e}")
+            return False
     
     def update_from_hardware(self):
         """하드웨어에서 현재 상태 업데이트"""
@@ -1100,75 +1178,67 @@ class ModernRadioApp(QWidget):
                     print(f"Hardware unmute failed: {e}")
     
     def toggle_power(self):
+        if self.fm is None:
+            print("Hardware not initialized")
+            return
+            
         old_powered = self.is_powered
         
-        if self.is_powered:
-            # 파워 오프 (오디오 매니저 사용)
-            self.is_powered = False
-            if self.audio_manager:
-                success = self.audio_manager.power_off_sequence()
-                if not success:
-                    # 기존 방식으로 fallback
-                    try:
+        try:
+            if self.is_powered:
+                # 파워 오프 (오디오 매니저 사용)
+                print("Turning power OFF")
+                self.is_powered = False
+                if self.audio_manager:
+                    success = self.audio_manager.power_off_sequence()
+                    if not success:
+                        # 기존 방식으로 fallback
                         self.fm.set_power(False)
-                    except Exception as e:
-                        print(f"Hardware power off failed: {e}")
-                        self.is_powered = old_powered
-            else:
-                # 기존 방식
-                try:
+                else:
+                    # 기존 방식
                     self.fm.set_power(False)
-                except Exception as e:
-                    print(f"Hardware power off failed: {e}")
-                    self.is_powered = old_powered
-        elif self.is_recording:
-            # 레코딩 중이면 레코딩 중지
-            self.is_recording = False
-            if self.audio_manager:
-                success = self.audio_manager.recording_stop_sequence()
-                if not success:
-                    try:
+                    
+            elif self.is_recording:
+                # 레코딩 중이면 레코딩 중지
+                print("Stopping recording")
+                self.is_recording = False
+                if self.audio_manager:
+                    success = self.audio_manager.recording_stop_sequence()
+                    if not success:
                         self.fm.set_recording(False)
-                    except Exception as e:
-                        print(f"Hardware recording stop failed: {e}")
-                        self.is_recording = True
-            else:
-                try:
+                else:
                     self.fm.set_recording(False)
-                except Exception as e:
-                    print(f"Hardware recording stop failed: {e}")
-                    self.is_recording = True
-        else:
-            # 파워 온 (오디오 매니저 사용)
-            self.is_powered = True
-            if self.audio_manager:
-                success = self.audio_manager.power_on_sequence()
-                if not success:
-                    # 기존 방식으로 fallback
-                    try:
+            else:
+                # 파워 온 (오디오 매니저 사용)
+                print("Turning power ON")
+                self.is_powered = True
+                if self.audio_manager:
+                    success = self.audio_manager.power_on_sequence()
+                    if not success:
+                        # 기존 방식으로 fallback
                         self.fm.set_power(True)
                         time.sleep(0.2)
                         self.fm.set_volume(6)
                         self.reset_hardware()
-                    except Exception as e:
-                        print(f"Hardware power on failed: {e}")
-                        self.is_powered = False
-            else:
-                # 기존 방식
-                try:
+                else:
+                    # 기존 방식
                     self.fm.set_power(True)
                     time.sleep(0.2)
                     self.fm.set_volume(6)
                     self.reset_hardware()
-                except Exception as e:
-                    print(f"Hardware power on failed: {e}")
-                    self.is_powered = False
-        
-        self.update_power_state()
-        
-        # 파워 오프 시 레코딩 중지
-        if not self.is_powered and self.is_recording:
-            self.toggle_record()
+            
+            print(f"Power state changed: powered={self.is_powered}, recording={self.is_recording}")
+            self.update_power_state()
+            
+            # 파워 오프 시 레코딩 중지
+            if not self.is_powered and self.is_recording:
+                self.toggle_record()
+                
+        except Exception as e:
+            print(f"Power toggle failed: {e}")
+            # 실패 시 이전 상태로 복원
+            self.is_powered = old_powered
+            self.update_power_state()
     
     def reset_hardware(self):
         """하드웨어 리셋"""
@@ -1781,13 +1851,5 @@ class ModernRadioApp(QWidget):
         event.accept()
 
 
-if __name__ == '__main__':
-    app = QApplication(sys.argv)
-    
-    # 시스템 기본 스타일 사용
-    app.setStyle('Fusion')
-    
-    window = ModernRadioApp()
-    window.show()
-    
-    sys.exit(app.exec())
+# 라이브러리로 사용할 때를 위한 부분
+# main.py에서 import 해서 사용합니다.

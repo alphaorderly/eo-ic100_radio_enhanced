@@ -1,5 +1,7 @@
 import usb.core
 import struct
+import platform
+import sys
 from enum import Enum
 
 class BesCmd(Enum): # Enums from decompiled Samsung framework.
@@ -68,9 +70,52 @@ class BesFM:
             'product': dev.product
         }
         
-        if self._dev.is_kernel_driver_active(4):
-            self._dev.detach_kernel_driver(4)
-        self._notify_ep = self._dev.get_active_configuration()[4,0][0]
+        # macOS에서 권한 문제 해결을 위한 추가 처리
+        try:
+            # 기존 커널 드라이버 분리
+            if self._dev.is_kernel_driver_active(4):
+                self._dev.detach_kernel_driver(4)
+        except usb.core.USBError as e:
+            if platform.system() == "Darwin":  # macOS
+                print(f"Warning: Could not detach kernel driver (this is normal on macOS): {e}")
+            else:
+                raise e
+        
+        try:
+            # macOS에서 권한 문제 해결을 위해 명시적으로 configuration 설정
+            if platform.system() == "Darwin":
+                try:
+                    self._dev.set_configuration()
+                except usb.core.USBError as e:
+                    if "Access denied" in str(e) or "Permission denied" in str(e):
+                        raise PermissionError(
+                            "USB device access denied. On macOS, you may need to:\n"
+                            "1. Run the application with sudo privileges\n"
+                            "2. Or grant USB device access in System Preferences\n"
+                            "3. Or install using homebrew with proper permissions\n"
+                            f"Original error: {e}"
+                        )
+                    raise e
+            
+            self._notify_ep = self._dev.get_active_configuration()[4,0][0]
+            
+        except usb.core.USBError as e:
+            if "Access denied" in str(e) or "Permission denied" in str(e):
+                if platform.system() == "Darwin":  # macOS
+                    raise PermissionError(
+                        "USB device access denied. On macOS, you may need to:\n"
+                        "1. Run the application with 'sudo' privileges:\n"
+                        "   sudo ./FM-Radio-Enhanced-macOS-arm64\n"
+                        "2. Or add USB device access permissions:\n"
+                        "   - Go to System Preferences → Security & Privacy → Privacy\n"
+                        "   - Add your application to 'USB' or 'Accessibility' if available\n"
+                        "3. Try disconnecting and reconnecting the USB device\n"
+                        
+                        f"Original error: {e}"
+                    )
+                else:
+                    raise PermissionError(f"USB device access denied: {e}")
+            raise e
     
     @staticmethod
     def find_all_devices():
