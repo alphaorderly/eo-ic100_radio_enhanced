@@ -20,7 +20,7 @@ def main():
         from PySide6.QtCore import Qt
         
         # 메인 애플리케이션 import
-        from ic100_radio_gui import ModernRadioApp
+        from gui.main_window import ModernRadioApp
         
         # macOS에서 high DPI 지원
         if platform.system() == "Darwin":

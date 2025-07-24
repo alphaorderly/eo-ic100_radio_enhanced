@@ -1,63 +1,16 @@
+"""
+BesFM 라디오 하드웨어 핵심 클래스
+"""
 import usb.core
 import struct
 import platform
-import sys
-from enum import Enum
+import time
+from .besfm_enums import BesCmd, BesFM_Enums
 
-class BesCmd(Enum): # Enums from decompiled Samsung framework.
-    WRITE = 64
-    READ = 192
-    QUERY = 163
-    GET = 162
-    GET_FM_IC_NO = 1
-    GET_FM_IC_POWER_ON_STATE = 2
-    GET_CURRENT_FM_BAND = 3
-    GET_CURRENT_RSSI = 4
-    GET_CURRENT_SPACING = 5
-    GET_MUTE_STATE = 6
-    GET_FORCED_MONO_STATE = 7
-    GET_CURRENT_VOLUME = 8
-    GET_RDS_STATUS = 10
-    GET_CURRENT_CHANNEL = 13
-    GET_CURRENT_SEEKING_DC_THRESHOLD = 14
-    GET_CURRENT_SEEKING_SPIKING_THRESHOLD = 15
-    GET_CURRENT_FM_IC_INFO = 16
-    GET_FM_RECORDING_MODE_STATUS = 17
-    GET_FM_PROTOCOL_VERSION = 18
-    GET_FM_INDEX = 0
-    GET_DATA_LENGTH = 2
-    SET = 161
-    SET_POWER_STATE = 0
-    SET_FM_IC_POWER_OFF = 0
-    SET_FM_IC_POWER_ON = 1
-    SET_FM_BAND = 1
-    SET_CHAN_RSSI_TH = 2
-    SET_CHAN_SPACING = 3
-    SET_MUTE = 4
-    SET_VOLUME = 5
-    SET_MONO_MODE = 6
-    SET_SEEK_START = 7
-    SET_SEEK_UP = 1
-    SET_SEEK_DOWN = 2
-    SET_SEEK_STOP = 8
-    SET_CHANNEL = 9
-    SET_RDS = 10
-    SET_DC_THRES = 11
-    SET_SPIKE_THRES = 12
-    SET_TEST_MODE = 13
-    SET_RECORDING_MODE = 14
-    SET_DATA_LENGTH = 1
-
-class BesFM_Enums(Enum):
-    CHAN_SPACING_200KHz = 0
-    CHAN_SPACING_100KHz = 1
-    CHAN_SPACING_50KHz = 2
-    BAND_87MHz_108MHz = 0
-    BAND_76MHz_107MHz = 1
-    BAND_76MHz_91MHz = 2
-    BAND_64MHz_76MHz = 3
 
 class BesFM:
+    """Samsung BesFM 라디오 하드웨어 제어 클래스"""
+    
     def __init__(self, dev: usb.core.Device):
         self._dev = dev
         self._device_info = {
@@ -89,10 +42,10 @@ class BesFM:
                 except usb.core.USBError as e:
                     if "Access denied" in str(e) or "Permission denied" in str(e):
                         raise PermissionError(
-                            "USB device access denied. On macOS, you may need to:\n"
-                            "1. Run the application with sudo privileges\n"
-                            "2. Or grant USB device access in System Preferences\n"
-                            "3. Or install using homebrew with proper permissions\n"
+                            "USB device access denied. On macOS, you may need to:\\n"
+                            "1. Run the application with sudo privileges\\n"
+                            "2. Or grant USB device access in System Preferences\\n"
+                            "3. Or install using homebrew with proper permissions\\n"
                             f"Original error: {e}"
                         )
                     raise e
@@ -103,13 +56,13 @@ class BesFM:
             if "Access denied" in str(e) or "Permission denied" in str(e):
                 if platform.system() == "Darwin":  # macOS
                     raise PermissionError(
-                        "USB device access denied. On macOS, you may need to:\n"
-                        "1. Run the application with 'sudo' privileges:\n"
-                        "   sudo ./FM-Radio-Enhanced-macOS-arm64\n"
-                        "2. Or add USB device access permissions:\n"
-                        "   - Go to System Preferences → Security & Privacy → Privacy\n"
-                        "   - Add your application to 'USB' or 'Accessibility' if available\n"
-                        "3. Try disconnecting and reconnecting the USB device\n"
+                        "USB device access denied. On macOS, you may need to:\\n"
+                        "1. Run the application with 'sudo' privileges:\\n"
+                        "   sudo ./FM-Radio-Enhanced-macOS-arm64\\n"
+                        "2. Or add USB device access permissions:\\n"
+                        "   - Go to System Preferences → Security & Privacy → Privacy\\n"
+                        "   - Add your application to 'USB' or 'Accessibility' if available\\n"
+                        "3. Try disconnecting and reconnecting the USB device\\n"
                         
                         f"Original error: {e}"
                     )
@@ -176,12 +129,10 @@ class BesFM:
                     cmd, value, bytearray(BesCmd.SET_DATA_LENGTH.value)
                 )
                 # 작은 지연으로 USB 안정성 향상
-                import time
                 time.sleep(0.001)  # 1ms
                 return
             except usb.core.USBError as e:
                 if attempt < max_retries - 1:
-                    import time
                     time.sleep(0.01)  # 10ms 대기 후 재시도
                     continue
                 raise e
@@ -198,17 +149,16 @@ class BesFM:
                     bytearray(BesCmd.GET_DATA_LENGTH.value)
                 )
                 # 작은 지연으로 USB 안정성 향상
-                import time
                 time.sleep(0.001)  # 1ms
                 return result
             except usb.core.USBError as e:
                 if attempt < max_retries - 1:
-                    import time
                     time.sleep(0.01)  # 10ms 대기 후 재시도
                     continue
                 raise e
 
     def _query(self):
+        """USB 쿼리 명령"""
         return self._dev.ctrl_transfer(
             BesCmd.READ.value,
             BesCmd.QUERY.value,
@@ -217,16 +167,18 @@ class BesFM:
         )
 
     def _wait(self, timeout=None):
+        """USB 알림 대기"""
         try:
             resp = self._notify_ep.read(5, timeout=timeout).tobytes()
         except usb.core.USBError as e:
                 if e.errno != 110:
                     raise e
         else:
-            if resp[0:3] == b'\x01\x00\x08':
+            if resp[0:3] == b'\\x01\\x00\\x08':
                 return True
 
     def set_power(self, b):
+        """전원 설정"""
         if self.get_recording():
             return
         # 전원 변경 시 지연 추가 (pop sound 방지)
@@ -240,16 +192,17 @@ class BesFM:
                 BesCmd.SET_POWER_STATE.value,
                 BesCmd.SET_FM_IC_POWER_OFF.value
             )
-        import time
         time.sleep(0.010)  # 10ms 지연
 
     def get_power(self):
+        """전원 상태 조회"""
         if self._get(BesCmd.GET_FM_IC_POWER_ON_STATE.value)[0]:
             return True
         else:
             return False
 
     def set_recording(self, b):
+        """녹음 모드 설정"""
         if self.get_power():
             return
         if b:
@@ -264,116 +217,139 @@ class BesFM:
             )
 
     def get_recording(self):
+        """녹음 모드 상태 조회"""
         if self._get(BesCmd.GET_FM_RECORDING_MODE_STATUS.value)[0]:
             return True
         else:
             return False
 
     def set_band(self, band):
+        """주파수 대역 설정"""
         assert band in BesFM_Enums
         self._set(BesCmd.SET_FM_BAND.value, band.value)
 
     def get_band(self):
+        """주파수 대역 조회"""
         return self._get(BesCmd.GET_CURRENT_FM_BAND.value)[0]
 
     def set_rssi_threshold(self, value):
+        """RSSI 임계값 설정 (미구현)"""
         raise NotImplementedError
 
     def get_rssi_threshold(self):
+        """RSSI 임계값 조회 (미구현)"""
         raise NotImplementedError
 
     def set_channel_spacing(self, spacing):
+        """채널 간격 설정"""
         assert spacing in BesFM_Enums
         self._set(BesCmd.SET_CHAN_SPACING.value, spacing.value)
 
     def get_channel_spacing(self):
+        """채널 간격 조회"""
         return self._get(BesCmd.GET_CURRENT_SPACING.value)[0]
 
     def set_mute(self, b):
+        """음소거 설정"""
         # 뮤트 변경 시 지연 추가 (pop sound 방지)
         if b:
             self._set(BesCmd.SET_MUTE.value, 1)
         else:
             self._set(BesCmd.SET_MUTE.value, 0)
-        import time
         time.sleep(0.003)  # 3ms 지연
 
     def get_mute(self):
+        """음소거 상태 조회"""
         if self._get(BesCmd.GET_MUTE_STATE.value)[0]:
             return True
         else:
             return False
 
     def set_volume(self, volume):
+        """볼륨 설정 (0-15)"""
         assert 0 <= volume <= 15
         # 볼륨 변경 시 약간의 지연 추가 (pop sound 방지)
         self._set(BesCmd.SET_VOLUME.value, volume)
-        import time
         time.sleep(0.002)  # 2ms 지연
 
     def get_volume(self):
+        """볼륨 조회"""
         return self._get(BesCmd.GET_CURRENT_VOLUME.value)[0]
 
     def set_mono(self, b):
+        """모노 모드 설정"""
         if b:
             self._set(BesCmd.SET_MONO_MODE.value, 1)
         else:
             self._set(BesCmd.SET_MONO_MODE.value, 0)
 
     def get_mono(self):
+        """모노 모드 상태 조회"""
         if self._get(BesCmd.GET_FORCED_MONO_STATE.value)[0]:
             return True
         else:
             return False
 
     def _set_seek(self, seek):
+        """시크 명령 설정"""
         self._set(BesCmd.SET_SEEK_START.value, seek.value)
 
     def seek_up(self):
+        """위쪽 주파수 스캔"""
         self._set_seek(BesCmd.SET_SEEK_UP)
 
     def seek_down(self):
+        """아래쪽 주파수 스캔"""
         self._set_seek(BesCmd.SET_SEEK_DOWN)
 
     def seek_stop(self):
+        """스캔 중지"""
         self._set(BesCmd.SET_SEEK_STOP.value, 0)
 
     def set_channel(self, freq):
+        """주파수 설정"""
         # 주파수 변경 시 지연 추가 (pop sound 방지)
         self._set(
             BesCmd.SET_CHANNEL.value, int(freq * 100)
             )
-        import time
         time.sleep(0.005)  # 5ms 지연
 
     def get_channel(self):
+        """현재 주파수 조회"""
         return struct.unpack('<H',self._get(BesCmd.GET_CURRENT_CHANNEL.value))[0] / 100
 
     def set_rds(self, b):
+        """RDS 설정"""
         if b:
             self._set(BesCmd.SET_RDS.value, 1)
         else:
             self._set(BesCmd.SET_RDS.value, 0)
 
     def get_rds(self):
+        """RDS 상태 조회"""
         if self._get(BesCmd.GET_RDS_STATUS.value)[0]:
             return True
         else:
             return False
 
     def set_dc_threshold(self, value):
+        """DC 임계값 설정 (미구현)"""
         raise NotImplementedError
 
     def get_dc_threshold(self):
+        """DC 임계값 조회 (미구현)"""
         raise NotImplementedError
 
     def set_spike_threshold(self, value):
+        """Spike 임계값 설정 (미구현)"""
         raise NotImplementedError
 
     def get_spike_threshold(self):
+        """Spike 임계값 조회 (미구현)"""
         raise NotImplementedError
 
     def get_status(self):
+        """하드웨어 상태 조회"""
         res = self._query()
         if res[0] == 0:
             success, freq, strength = struct.unpack('<?HB', res[1:5])

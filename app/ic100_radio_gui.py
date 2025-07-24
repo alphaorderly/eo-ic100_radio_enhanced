@@ -1,6 +1,5 @@
 import sys
 import time
-import usb.core
 import besfm
 import json
 import os
@@ -300,7 +299,6 @@ class ModernRadioApp(QWidget):
     def init_hardware(self):
         """하드웨어 초기화"""
         try:
-            print(f"Initializing hardware with device: {self.selected_device}")
             self.fm = besfm.BesFM(self.selected_device)
             
             # 연결 상태 확인

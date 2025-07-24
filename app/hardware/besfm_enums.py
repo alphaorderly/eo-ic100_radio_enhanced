@@ -1,0 +1,61 @@
+"""
+BesFM 라디오 하드웨어 열거형 정의
+"""
+from enum import Enum
+
+
+class BesCmd(Enum):
+    """Enums from decompiled Samsung framework."""
+    WRITE = 64
+    READ = 192
+    QUERY = 163
+    GET = 162
+    GET_FM_IC_NO = 1
+    GET_FM_IC_POWER_ON_STATE = 2
+    GET_CURRENT_FM_BAND = 3
+    GET_CURRENT_RSSI = 4
+    GET_CURRENT_SPACING = 5
+    GET_MUTE_STATE = 6
+    GET_FORCED_MONO_STATE = 7
+    GET_CURRENT_VOLUME = 8
+    GET_RDS_STATUS = 10
+    GET_CURRENT_CHANNEL = 13
+    GET_CURRENT_SEEKING_DC_THRESHOLD = 14
+    GET_CURRENT_SEEKING_SPIKING_THRESHOLD = 15
+    GET_CURRENT_FM_IC_INFO = 16
+    GET_FM_RECORDING_MODE_STATUS = 17
+    GET_FM_PROTOCOL_VERSION = 18
+    GET_FM_INDEX = 0
+    GET_DATA_LENGTH = 2
+    SET = 161
+    SET_POWER_STATE = 0
+    SET_FM_IC_POWER_OFF = 0
+    SET_FM_IC_POWER_ON = 1
+    SET_FM_BAND = 1
+    SET_CHAN_RSSI_TH = 2
+    SET_CHAN_SPACING = 3
+    SET_MUTE = 4
+    SET_VOLUME = 5
+    SET_MONO_MODE = 6
+    SET_SEEK_START = 7
+    SET_SEEK_UP = 1
+    SET_SEEK_DOWN = 2
+    SET_SEEK_STOP = 8
+    SET_CHANNEL = 9
+    SET_RDS = 10
+    SET_DC_THRES = 11
+    SET_SPIKE_THRES = 12
+    SET_TEST_MODE = 13
+    SET_RECORDING_MODE = 14
+    SET_DATA_LENGTH = 1
+
+
+class BesFM_Enums(Enum):
+    """BesFM 설정 값들"""
+    CHAN_SPACING_200KHz = 0
+    CHAN_SPACING_100KHz = 1
+    CHAN_SPACING_50KHz = 2
+    BAND_87MHz_108MHz = 0
+    BAND_76MHz_107MHz = 1
+    BAND_76MHz_91MHz = 2
+    BAND_64MHz_76MHz = 3

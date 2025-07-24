@@ -34,10 +34,7 @@ hidden_imports = [
 ]
 
 # 데이터 파일들
-datas = [
-    ('audio_manager.py', '.'),
-    ('besfm.py', '.'),
-]
+datas = []
 
 # 바이너리 파일들 (USB 라이브러리)
 binaries = []

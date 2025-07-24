@@ -98,8 +98,9 @@ jobs:
           echo "Memory info:"
           vm_stat | head -5
 
-          # spec 파일을 사용하여 빌드
-          echo "🚀 Starting PyInstaller build..."
+          # app 폴더로 이동하여 빌드
+          cd app
+          echo "🚀 Starting PyInstaller build from app directory..."
           pyinstaller build.spec --clean --noconfirm --log-level INFO
 
           echo "✅ Build completed. Checking output..."
@@ -114,6 +115,10 @@ jobs:
             echo "⚠️ App bundle not found, checking for executable..."
             ls -la dist/
           fi
+
+          # 빌드된 파일을 상위 디렉토리로 복사
+          cp -r dist/* ../dist/ || mkdir -p ../dist && cp -r dist/* ../dist/
+          cd ..
 
           echo "🎯 macOS build finished!"
 
@@ -132,13 +137,19 @@ jobs:
           Write-Host "Memory info:" -ForegroundColor Cyan
           Get-WmiObject -Class Win32_OperatingSystem | Select-Object TotalVisibleMemorySize, FreePhysicalMemory
 
-          # spec 파일을 사용하여 빌드
-          Write-Host "🚀 Starting PyInstaller build..." -ForegroundColor Green
+          # app 폴더로 이동하여 빌드
+          Set-Location app
+          Write-Host "🚀 Starting PyInstaller build from app directory..." -ForegroundColor Green
           pyinstaller build.spec --clean --noconfirm --log-level INFO
 
           Write-Host "✅ Build completed. Checking output..." -ForegroundColor Green
           # 실행 파일이 정상적으로 생성되었는지 확인
           Get-ChildItem dist/
+
+          # 빌드된 파일을 상위 디렉토리로 복사
+          if (-not (Test-Path "../dist")) { New-Item -ItemType Directory -Path "../dist" }
+          Copy-Item -Path "dist/*" -Destination "../dist/" -Recurse -Force
+          Set-Location ..
 
           Write-Host "🎯 Windows build finished!" -ForegroundColor Green
 

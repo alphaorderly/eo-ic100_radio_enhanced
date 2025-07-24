@@ -1,13 +1,14 @@
 {
   "presets": [
-    88.1,
+    null,
     null,
     null,
     null,
     null,
     null
   ],
-  "last_frequency": 104.5,
-  "last_volume": 8,
-  "is_korean": true
+  "last_frequency": 88.10000000000002,
+  "last_volume": 15,
+  "language": "korean",
+  "rds_enabled": false
 }

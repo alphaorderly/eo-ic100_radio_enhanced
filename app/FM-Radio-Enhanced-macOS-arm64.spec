@@ -1,10 +1,7 @@
 # -*- mode: python ; coding: utf-8 -*-
 from PyInstaller.utils.hooks import collect_all
 
-datas = [
-    ('audio_manager.py', '.'),
-    ('besfm.py', '.'),
-]
+datas = []
 binaries = []
 hiddenimports = [
     'usb.backend.libusb1', 
